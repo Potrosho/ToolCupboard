@@ -133,13 +133,13 @@ namespace ToolCupboard.DiscordBot
                     MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
-                        MainWindow.ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
-                        if (serverStatus == MainWindow.ServerStatus.Stopped)
+                        ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
+                        if (serverStatus == ServerStatus.Stopped)
                         {
                             bool started = await ToolCupboard.StartServerById(args[1], message.Author.Id.ToString(), message.Author.Username);
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) {(started ? "Started" : "Fail to Start")}.");
                         }
-                        else if (serverStatus == MainWindow.ServerStatus.Started)
+                        else if (serverStatus == ServerStatus.Started)
                         {
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) already Started.");
                         }
@@ -172,13 +172,13 @@ namespace ToolCupboard.DiscordBot
                     MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
-                        MainWindow.ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
-                        if (serverStatus == MainWindow.ServerStatus.Started)
+                        ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
+                        if (serverStatus == ServerStatus.Started)
                         {
                             bool started = await ToolCupboard.StopServerById(args[1], message.Author.Id.ToString(), message.Author.Username);
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) {(started ? "Stopped" : "Fail to Stop")}.");
                         }
-                        else if (serverStatus == MainWindow.ServerStatus.Stopped)
+                        else if (serverStatus == ServerStatus.Stopped)
                         {
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) already Stopped.");
                         }
@@ -211,8 +211,8 @@ namespace ToolCupboard.DiscordBot
                     MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
-                        MainWindow.ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
-                        if (serverStatus == MainWindow.ServerStatus.Started)
+                        ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
+                        if (serverStatus == ServerStatus.Started)
                         {
                             bool started = await ToolCupboard.RestartServerById(args[1], message.Author.Id.ToString(), message.Author.Username);
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) {(started ? "Restarted" : "Fail to Restart")}.");
@@ -246,8 +246,8 @@ namespace ToolCupboard.DiscordBot
                     MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
-                        MainWindow.ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
-                        if (serverStatus == MainWindow.ServerStatus.Started)
+                        ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
+                        if (serverStatus == ServerStatus.Started)
                         {
                             string sendCommand = command.Substring(args[1].Length + 6);
                             bool sent = await ToolCupboard.SendCommandById(args[1], sendCommand, message.Author.Id.ToString(), message.Author.Username);
@@ -280,14 +280,14 @@ namespace ToolCupboard.DiscordBot
                     MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
-                        MainWindow.ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
-                        if (serverStatus == MainWindow.ServerStatus.Stopped)
+                        ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
+                        if (serverStatus == ServerStatus.Stopped)
                         {
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) Backup started - this may take some time.");
                             bool backuped = await ToolCupboard.BackupServerById(args[1], message.Author.Id.ToString(), message.Author.Username);
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) {(backuped ? "Backup Complete" : "Fail to Backup")}.");
                         }
-                        else if (serverStatus == MainWindow.ServerStatus.Backuping)
+                        else if (serverStatus == ServerStatus.Backuping)
                         {
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) already Backuping.");
                         }
@@ -318,14 +318,14 @@ namespace ToolCupboard.DiscordBot
                     MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
-                        MainWindow.ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
-                        if (serverStatus == MainWindow.ServerStatus.Stopped)
+                        ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
+                        if (serverStatus == ServerStatus.Stopped)
                         {
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) Update started - this may take some time.");
                             bool updated = await ToolCupboard.UpdateServerById(args[1], message.Author.Id.ToString(), message.Author.Username);
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) {(updated ? "Updated" : "Fail to Update")}.");
                         }
-                        else if (serverStatus == MainWindow.ServerStatus.Updating)
+                        else if (serverStatus == ServerStatus.Updating)
                         {
                             await message.Channel.SendMessageAsync($"Server (ID: {args[1]}) already Updating.");
                         }
