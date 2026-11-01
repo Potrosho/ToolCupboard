@@ -26,6 +26,57 @@ namespace ToolCupboard.Web
         public string Url { get; set; }
         public string HeaderImage { get; set; }
         public bool RustPlus { get; set; }
+        public string Name { get; set; }
+        public string Ip { get; set; }
+        public string Port { get; set; }
+        public string QueryPort { get; set; }
+        public string Map { get; set; }
+        public string MaxPlayers { get; set; }
+        public string Parameters { get; set; }
+        public int CpuPriority { get; set; }
+        public string CpuAffinity { get; set; }
+        public bool DiscordAlert { get; set; }
+        public string DiscordMessage { get; set; }
+        public bool HasWebhook { get; set; }
+        public string NewWebhook { get; set; }
+        public bool ClearWebhook { get; set; }
+        public bool AutoStartAlert { get; set; }
+        public bool AutoRestartAlert { get; set; }
+        public bool AutoUpdateAlert { get; set; }
+        public bool RestartCrontabAlert { get; set; }
+        public bool CrashAlert { get; set; }
+    }
+
+    public class WebAppOptions
+    {
+        public bool StartOnLogin { get; set; }
+        public bool RestartOnCrash { get; set; }
+    }
+
+    public class WebDiscordAdmin
+    {
+        public string Id { get; set; }
+        public string Servers { get; set; }
+    }
+
+    public class WebDiscord
+    {
+        public bool Running { get; set; }
+        public bool Busy { get; set; }
+        public bool HasToken { get; set; }
+        public string NewToken { get; set; }
+        public string Prefix { get; set; }
+        public bool AutoStart { get; set; }
+        public string Commands { get; set; }
+        public string InviteLink { get; set; }
+        public WebDiscordAdmin[] Admins { get; set; }
+    }
+
+    public class WebNewServer
+    {
+        public string Kind { get; set; }
+        public string Name { get; set; }
+        public string Path { get; set; }
     }
 
     public class WebConfirmed

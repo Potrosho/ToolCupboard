@@ -141,6 +141,10 @@ namespace ToolCupboard
 
         private readonly DiscordBot.Bot g_DiscordBot = new DiscordBot.Bot();
         private Web.WebServer g_WebServer;
+        private bool g_WebJobRunning;
+        private string g_WebJobKind = string.Empty;
+        private string g_WebJobError;
+        private readonly List<string> g_WebJobLog = new List<string>();
         private string g_UmodQuery = string.Empty;
         private int g_UmodPage = 1;
         private int g_UmodLastPage = 1;
@@ -847,30 +851,13 @@ namespace ToolCupboard
 
         private async void Button_Install_Click(object sender, RoutedEventArgs e)
         {
-            if (Installer != null)
+            if (g_WebJobRunning)
             {
-                if (!Installer.HasExited) { Installer.Kill(); }
-                Installer = null;
+                await this.ShowMessageAsync("Install Server", "The web UI is already installing or importing a server.");
+                return;
             }
 
             if (string.IsNullOrWhiteSpace(textbox_InstallServerName.Text)) { return; }
-
-            var newServerConfig = new ServerConfig(null);
-            string installPath = ServerPath.GetServersServerFiles(newServerConfig.ServerID);
-            if (Directory.Exists(installPath))
-            {
-                try
-                {
-                    Directory.Delete(installPath, true);
-                }
-                catch
-                {
-                    System.Windows.Forms.MessageBox.Show(installPath + " is not accessible!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-            }
-
-            Directory.CreateDirectory(installPath);
 
             //Installation start
             textbox_InstallServerName.IsEnabled = false;
@@ -879,9 +866,54 @@ namespace ToolCupboard
             button_Install.IsEnabled = false;
             textbox_InstallLog.Text = string.Empty;
 
-            string servername = textbox_InstallServerName.Text;
-            string servergame = GameServer.RUST.FullName;
+            string error = await InstallServer(textbox_InstallServerName.Text, line =>
+            {
+                textbox_InstallLog.AppendText(line + Environment.NewLine);
+                textbox_InstallLog.ScrollToEnd();
+            });
 
+            textbox_InstallServerName.IsEnabled = true;
+            progressbar_InstallProgress.IsIndeterminate = false;
+
+            if (error == null)
+            {
+                MahAppFlyout_InstallGameServer.IsOpen = false;
+            }
+            else
+            {
+                textblock_InstallProgress.Text = error;
+                button_Install.IsEnabled = true;
+            }
+        }
+
+        // Shared by the install panel and the web UI. Returns null when installed, otherwise the reason it failed
+        private async Task<string> InstallServer(string servername, Action<string> onLine)
+        {
+            if (Installer != null)
+            {
+                if (!Installer.HasExited) { Installer.Kill(); }
+                Installer = null;
+            }
+
+            var newServerConfig = new ServerConfig(null);
+            if (newServerConfig.ServerID == null) { return "The maximum number of servers is reached."; }
+
+            string installPath = ServerPath.GetServersServerFiles(newServerConfig.ServerID);
+            if (Directory.Exists(installPath))
+            {
+                try
+                {
+                    Directory.Delete(installPath, true);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                    return $"{installPath} is not accessible!";
+                }
+            }
+
+            Directory.CreateDirectory(installPath);
+
+            string servergame = GameServer.RUST.FullName;
             newServerConfig.CreateServerDirectory();
 
             dynamic gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
@@ -896,61 +928,39 @@ namespace ToolCupboard
                     while (!reader.EndOfStream)
                     {
                         var nextLine = reader.ReadLine();
-                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            textbox_InstallLog.AppendText(nextLine + Environment.NewLine);
-                            textbox_InstallLog.ScrollToEnd();
-                        });
+                        System.Windows.Application.Current.Dispatcher.Invoke(() => onLine(nextLine));
                     }
 
                     Installer?.WaitForExit();
                 });
             }
 
-            if (gameServer.IsInstallValid())
+            if (!gameServer.IsInstallValid())
             {
-                newServerConfig.ServerIP = newServerConfig.GetIPAddress();
-                newServerConfig.ServerPort = newServerConfig.GetAvailablePort(gameServer.Port, gameServer.PortIncrements);
-
-                // Create ToolCupboard.cfg
-                newServerConfig.SetData(servergame, servername, gameServer);
-                newServerConfig.CreateToolCupboardConfig();
-
-                // Create ToolCupboard.cfg and game server config
-                try
-                {
-                    gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
-                    gameServer.CreateServerCFG();
-                }
-                catch
-                {
-                    // ignore
-                }
-
-                LoadServerTable();
-                Log(newServerConfig.ServerID, "Install: Success");
-
-                MahAppFlyout_InstallGameServer.IsOpen = false;
-                textbox_InstallServerName.IsEnabled = true;
-                progressbar_InstallProgress.IsIndeterminate = false;
-
+                return Installer != null ? $"Fail to install [ERROR] Exit code: {Installer.ExitCode}" : $"Fail to install [ERROR] {gameServer.Error}";
             }
-            else
+
+            newServerConfig.ServerIP = newServerConfig.GetIPAddress();
+            newServerConfig.ServerPort = newServerConfig.GetAvailablePort(gameServer.Port, gameServer.PortIncrements);
+
+            // Create ToolCupboard.cfg
+            newServerConfig.SetData(servergame, servername, gameServer);
+            newServerConfig.CreateToolCupboardConfig();
+
+            // Create ToolCupboard.cfg and game server config
+            try
             {
-                textbox_InstallServerName.IsEnabled = true;
-                progressbar_InstallProgress.IsIndeterminate = false;
-                textblock_InstallProgress.Text = "Install";
-                button_Install.IsEnabled = true;
-
-                if (Installer != null)
-                {
-                    textblock_InstallProgress.Text = "Fail to install [ERROR] Exit code: " + Installer.ExitCode;
-                }
-                else
-                {
-                    textblock_InstallProgress.Text = $"Fail to install [ERROR] {gameServer.Error}";
-                }
+                gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
+                gameServer.CreateServerCFG();
             }
+            catch
+            {
+                // ignore
+            }
+
+            LoadServerTable();
+            Log(newServerConfig.ServerID, "Install: Success");
+            return null;
         }
 
         private void Import_Click(object sender, RoutedEventArgs e)
@@ -977,20 +987,48 @@ namespace ToolCupboard
 
         private async void Button_Import_Click(object sender, RoutedEventArgs e)
         {
-            label_ServerDirWarn.Content = Directory.Exists(textbox_ServerDir.Text) ? string.Empty : "Server Dir is invalid";
-            if (string.IsNullOrWhiteSpace(textbox_ImportServerName.Text)) { return; }
-
-            string servername = textbox_ImportServerName.Text;
-            string servergame = GameServer.RUST.FullName;
-
-            var newServerConfig = new ServerConfig(null);
-            dynamic gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
-
-            if (!gameServer.IsImportValid(textbox_ServerDir.Text))
+            if (g_WebJobRunning)
             {
-                label_ServerDirWarn.Content = gameServer.Error;
+                await this.ShowMessageAsync("Import Server", "The web UI is already installing or importing a server.");
                 return;
             }
+
+            if (string.IsNullOrWhiteSpace(textbox_ImportServerName.Text)) { return; }
+
+            //Import start
+            textbox_ImportServerName.IsEnabled = false;
+            textbox_ServerDir.IsEnabled = false;
+            button_Browse.IsEnabled = false;
+            progressbar_ImportProgress.IsIndeterminate = true;
+            textblock_ImportProgress.Text = "Importing";
+            label_ServerDirWarn.Content = string.Empty;
+
+            string error = await ImportServer(textbox_ImportServerName.Text, textbox_ServerDir.Text);
+
+            textbox_ImportServerName.IsEnabled = true;
+            textbox_ServerDir.IsEnabled = true;
+            button_Browse.IsEnabled = true;
+            progressbar_ImportProgress.IsIndeterminate = false;
+            textblock_ImportProgress.Text = error == null ? string.Empty : "[ERROR] Fail to import";
+            label_ServerDirWarn.Content = error ?? string.Empty;
+
+            if (error == null)
+            {
+                MahAppFlyout_ImportGameServer.IsOpen = false;
+            }
+        }
+
+        // Shared by the import panel and the web UI. Returns null when imported, otherwise the reason it failed
+        private async Task<string> ImportServer(string servername, string sourcePath)
+        {
+            if (!Directory.Exists(sourcePath)) { return "Server Dir is invalid"; }
+
+            string servergame = GameServer.RUST.FullName;
+            var newServerConfig = new ServerConfig(null);
+            if (newServerConfig.ServerID == null) { return "The maximum number of servers is reached."; }
+
+            dynamic gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
+            if (!gameServer.IsImportValid(sourcePath)) { return gameServer.Error; }
 
             string importPath = ServerPath.GetServersServerFiles(newServerConfig.ServerID);
             if (Directory.Exists(importPath))
@@ -999,33 +1037,18 @@ namespace ToolCupboard
                 {
                     Directory.Delete(importPath, true);
                 }
-                catch
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                 {
-                    System.Windows.Forms.MessageBox.Show(importPath + " is not accessible!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
+                    return $"{importPath} is not accessible!";
                 }
             }
 
-            //Import start
-            textbox_ImportServerName.IsEnabled = false;
-            textbox_ServerDir.IsEnabled = false;
-            button_Browse.IsEnabled = false;
-            progressbar_ImportProgress.IsIndeterminate = true;
-            textblock_ImportProgress.Text = "Importing";
-
-            string sourcePath = textbox_ServerDir.Text;
             string importLog = await Task.Run(() =>
             {
                 try
                 {
+                    // Copied, because a move can lose files and fails across drives
                     Microsoft.VisualBasic.FileIO.FileSystem.CopyDirectory(sourcePath, importPath);
-
-                    // Scary error while moving the directory, some files may lost - Risky
-                    //Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(sourcePath, importPath);
-
-                    // This doesn't work on cross drive - Not working on cross drive
-                    //Directory.Move(sourcePath, importPath);
-
                     return null;
                 }
                 catch (Exception ex)
@@ -1036,13 +1059,7 @@ namespace ToolCupboard
 
             if (importLog != null)
             {
-                textbox_ImportServerName.IsEnabled = true;
-                textbox_ServerDir.IsEnabled = true;
-                button_Browse.IsEnabled = true;
-                progressbar_ImportProgress.IsIndeterminate = false;
-                textblock_ImportProgress.Text = "[ERROR] Fail to import";
-                MessageBox.Show($"Fail to copy the directory.\n{textbox_ServerDir.Text}\nto\n{importPath}\n\nYou may install a new server and copy the old servers file to the new server.\n\nException: {importLog}", "ERROR", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                return $"Fail to copy the directory. {importLog}";
             }
 
             // Create ToolCupboard.cfg
@@ -1051,13 +1068,7 @@ namespace ToolCupboard
 
             LoadServerTable();
             Log(newServerConfig.ServerID, "Import: Success");
-
-            MahAppFlyout_ImportGameServer.IsOpen = false;
-            textbox_ImportServerName.IsEnabled = true;
-            textbox_ServerDir.IsEnabled = true;
-            button_Browse.IsEnabled = true;
-            progressbar_ImportProgress.IsIndeterminate = false;
-            textblock_ImportProgress.Text = string.Empty;
+            return null;
         }
 
         private void Button_Browse_Click(object sender, RoutedEventArgs e)
@@ -1237,6 +1248,10 @@ namespace ToolCupboard
                 case "backup": if (!stopped) { return false; } await GameServer_Backup(server); return true;
                 case "install-oxide": return stopped && await RunWebInstall(server, RustModFramework.Oxide);
                 case "install-carbon": return stopped && await RunWebInstall(server, RustModFramework.Carbon);
+                case "test-webhook":
+                    ServerMetadata metadata = GetServerMetadata(server.ID);
+                    if (!metadata.DiscordAlert || string.IsNullOrWhiteSpace(metadata.DiscordWebhook)) { return false; }
+                    return await new DiscordWebhook(metadata.DiscordWebhook, metadata.DiscordMessage).Send(server.ID, server.Game, "Webhook Test Alert", server.Name, server.IP, server.Port);
                 case "remove-framework":
                     if (!stopped || RustMods.Detect(server.ID) == RustModFramework.None) { return false; }
                     await RemoveFramework(server);
@@ -1282,7 +1297,24 @@ namespace ToolCupboard
                 Description = RustConfig.Get(server.ID, "server.description"),
                 Url = RustConfig.Get(server.ID, "server.url"),
                 HeaderImage = RustConfig.Get(server.ID, "server.headerimage"),
-                RustPlus = RustConfig.Get(server.ID, "app.port") != "-1"
+                RustPlus = RustConfig.Get(server.ID, "app.port") != "-1",
+                Name = server.Name,
+                Ip = server.IP,
+                Port = server.Port,
+                QueryPort = server.QueryPort,
+                Map = server.Defaultmap,
+                MaxPlayers = new ServerConfig(server.ID).ServerMaxPlayer,
+                Parameters = new ServerConfig(server.ID).ServerParam,
+                CpuPriority = Functions.CPU.Priority.GetPriorityInteger(metadata.CPUPriority),
+                CpuAffinity = Functions.CPU.Affinity.GetAffinityValidatedString(metadata.CPUAffinity),
+                DiscordAlert = metadata.DiscordAlert,
+                DiscordMessage = metadata.DiscordMessage,
+                HasWebhook = !string.IsNullOrWhiteSpace(metadata.DiscordWebhook),
+                AutoStartAlert = metadata.AutoStartAlert,
+                AutoRestartAlert = metadata.AutoRestartAlert,
+                AutoUpdateAlert = metadata.AutoUpdateAlert,
+                RestartCrontabAlert = metadata.RestartCrontabAlert,
+                CrashAlert = metadata.CrashAlert
             };
         }
 
@@ -1296,6 +1328,21 @@ namespace ToolCupboard
             if (CrontabSchedule.TryParse(settings.WipeCrontab ?? string.Empty) == null) { return "The wipe schedule is not valid."; }
             if (!Enum.TryParse(settings.WipeType, out RustWipeType wipeType) || !Enum.IsDefined(typeof(RustWipeType), wipeType)) { return "The wipe type is not valid."; }
             if (settings.MaximumBackups < 1 || settings.MaximumBackups > 100) { return "Maximum backups must be between 1 and 100."; }
+
+            string serverName = CleanServerName(settings.Name);
+            if (serverName.Length == 0 || serverName.Length > 100) { return "Enter a server name of 100 characters or fewer."; }
+            if (!IsValidIPAddress(settings.Ip)) { return "The IP address is not valid."; }
+            if (!IsValidPort(settings.Port)) { return "The port is not valid."; }
+            if (!IsValidPort(settings.QueryPort)) { return "The query port is not valid."; }
+            if (!IsNumberInRange(settings.MaxPlayers, 1, 1000)) { return "Maximum players must be between 1 and 1000."; }
+            if (settings.CpuPriority < 0 || settings.CpuPriority > 5) { return "The CPU priority is not valid."; }
+            if (settings.CpuAffinity == null || settings.CpuAffinity.Length != Environment.ProcessorCount || settings.CpuAffinity.Any(c => c != '0' && c != '1') || !settings.CpuAffinity.Contains('1')) { return "Keep at least one CPU core selected."; }
+
+            string newWebhook = settings.NewWebhook?.Trim();
+            if (!string.IsNullOrEmpty(newWebhook) && !Web.WebAuth.IsDiscordWebhook(newWebhook)) { return "Enter a Discord webhook URL."; }
+
+            bool identityChanged = serverName != server.Name || settings.Ip != server.IP || settings.Port != server.Port || settings.QueryPort != server.QueryPort;
+            if (identityChanged && GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before changing its name, address, or ports."; }
 
             string error = SaveServerSettings(server, settings.WorldSize, settings.Seed, settings.TickRate, settings.SaveInterval, settings.Description, settings.Url, settings.HeaderImage, settings.RustPlus);
             if (error != null) { return error; }
@@ -1326,6 +1373,41 @@ namespace ToolCupboard
             ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeType, wipeType.ToString());
             metadata.WipeNewSeed = settings.WipeNewSeed; SaveFlag(ServerConfig.SettingName.WipeNewSeed, settings.WipeNewSeed);
             BackupConfig.SetMaximumBackups(server.ID, settings.MaximumBackups);
+
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerName, serverName);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerIP, settings.Ip);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerPort, settings.Port);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerQueryPort, settings.QueryPort);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerMap, (settings.Map ?? string.Empty).Replace("\"", "'"));
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerMaxPlayer, settings.MaxPlayers);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerParam, settings.Parameters ?? string.Empty);
+
+            metadata.DiscordAlert = settings.DiscordAlert; SaveFlag(ServerConfig.SettingName.DiscordAlert, settings.DiscordAlert);
+            metadata.DiscordMessage = (settings.DiscordMessage ?? string.Empty).Replace("\"", "'").Replace("\r", " ").Replace("\n", " ");
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.DiscordMessage, metadata.DiscordMessage);
+            metadata.AutoStartAlert = settings.AutoStartAlert; SaveFlag(ServerConfig.SettingName.AutoStartAlert, settings.AutoStartAlert);
+            metadata.AutoRestartAlert = settings.AutoRestartAlert; SaveFlag(ServerConfig.SettingName.AutoRestartAlert, settings.AutoRestartAlert);
+            metadata.AutoUpdateAlert = settings.AutoUpdateAlert; SaveFlag(ServerConfig.SettingName.AutoUpdateAlert, settings.AutoUpdateAlert);
+            metadata.RestartCrontabAlert = settings.RestartCrontabAlert; SaveFlag(ServerConfig.SettingName.RestartCrontabAlert, settings.RestartCrontabAlert);
+            metadata.CrashAlert = settings.CrashAlert; SaveFlag(ServerConfig.SettingName.CrashAlert, settings.CrashAlert);
+
+            if (settings.ClearWebhook || !string.IsNullOrEmpty(newWebhook))
+            {
+                metadata.DiscordWebhook = settings.ClearWebhook ? string.Empty : newWebhook;
+                ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.DiscordWebhook, metadata.DiscordWebhook);
+            }
+
+            metadata.CPUPriority = settings.CpuPriority.ToString();
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.CPUPriority, metadata.CPUPriority);
+            metadata.CPUAffinity = settings.CpuAffinity;
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.CPUAffinity, metadata.CPUAffinity);
+            if (metadata.Process != null && !metadata.Process.HasExited)
+            {
+                metadata.Process = Functions.CPU.Priority.SetProcessWithPriority(metadata.Process, settings.CpuPriority);
+                metadata.Process.ProcessorAffinity = Functions.CPU.Affinity.GetAffinityIntPtr(metadata.CPUAffinity);
+            }
+
+            LoadServerTable();
 
             if (ServerGrid.SelectedItem == server) { DataGrid_RefreshElements(); }
             return null;
@@ -1406,6 +1488,157 @@ namespace ToolCupboard
             RustMods.WritePlugin(server.ID, framework, name, System.Text.Encoding.UTF8.GetBytes(upload.Text));
             Log(server.ID, $"Mods: Added plugin {name} from the web UI");
             return null;
+        }
+
+        private static string CleanServerName(string name)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(name ?? string.Empty, "[\"\\r\\n]", "'").Trim();
+        }
+
+        public object GetWebJob()
+        {
+            return new { running = g_WebJobRunning, kind = g_WebJobKind, error = g_WebJobError, lines = g_WebJobLog.ToArray() };
+        }
+
+        // Returns null when the job started, otherwise the reason it was refused
+        public string StartWebJob(string kind, string name, string path)
+        {
+            string serverName = CleanServerName(name);
+            if (serverName.Length == 0 || serverName.Length > 100) { return "Enter a server name of 100 characters or fewer."; }
+            if (ServerGrid.Items.Count >= MAX_SERVER) { return "The maximum number of servers is reached."; }
+            if (g_WebJobRunning || progressbar_InstallProgress.IsIndeterminate || progressbar_ImportProgress.IsIndeterminate) { return "Another install or import is already running."; }
+            if (kind == "import" && string.IsNullOrWhiteSpace(path)) { return "Enter the folder of the existing server."; }
+
+            g_WebJobRunning = true;
+            g_WebJobKind = kind;
+            g_WebJobError = null;
+            g_WebJobLog.Clear();
+            RunWebJob(kind, serverName, path?.Trim());
+            return null;
+        }
+
+        private async void RunWebJob(string kind, string name, string path)
+        {
+            try
+            {
+                g_WebJobError = kind == "import" ? await ImportServer(name, path) : await InstallServer(name, line =>
+                {
+                    g_WebJobLog.Add(line);
+                    if (g_WebJobLog.Count > 300) { g_WebJobLog.RemoveAt(0); }
+                });
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is InvalidOperationException)
+            {
+                g_WebJobError = e.Message;
+            }
+
+            g_WebJobRunning = false;
+        }
+
+        // Returns null when deleted, otherwise the reason it was refused
+        public async Task<string> DeleteWebServer(string serverId, Web.WebConfirmed request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            if (!Web.WebAuth.IsConfirmed(request?.Confirm, server.Name)) { return "The server name did not match."; }
+            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before deleting it."; }
+
+            return await GameServer_Delete(server) ? null : "The server could not be deleted. Check the log.";
+        }
+
+        public string GetWebConfigFile(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            string path = ServerPath.GetServersServerFiles(server.ID, "server.cfg");
+            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        }
+
+        // Returns null when saved, otherwise the reason it was refused
+        public string SaveWebConfigFile(string serverId, string text)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before editing server.cfg."; }
+            if (text == null || text.Length > 100000) { return "The file is too large."; }
+
+            RustConfig.ReplaceFile(ServerPath.GetServersServerFiles(server.ID, "server.cfg"), text);
+            Log(server.ID, "Settings: server.cfg edited from the web UI");
+            return null;
+        }
+
+        public object GetWebSystem()
+        {
+            object Row(string label, double percent, object detail) => new { label, percent = Math.Round(percent, 1), detail = detail?.ToString() ?? string.Empty };
+
+            return new
+            {
+                version = APP_VERSION,
+                usage = new[]
+                {
+                    Row("CPU", dashboard_cpu_bar.Value, dashboard_cpu_type.Content),
+                    Row("Memory", dashboard_ram_bar.Value, dashboard_ram_ratio.Content),
+                    Row("Disk", dashboard_disk_bar.Value, dashboard_disk_ratio.Content),
+                    Row("Servers", dashboard_servers_bar.Value, dashboard_servers_ratio.Content),
+                    Row("Running", dashboard_started_bar.Value, dashboard_started_ratio.Content)
+                },
+                players = GetActivePlayers(),
+                log = textBox_applog.Text,
+                options = new Web.WebAppOptions { StartOnLogin = MahAppSwitch_StartOnBoot.IsOn, RestartOnCrash = MahAppSwitch_RestartOnCrash.IsOn }
+            };
+        }
+
+        public bool SaveWebOptions(Web.WebAppOptions options)
+        {
+            // The switches save themselves, the same as clicking them
+            MahAppSwitch_StartOnBoot.IsOn = options?.StartOnLogin == true;
+            MahAppSwitch_RestartOnCrash.IsOn = options?.RestartOnCrash == true;
+            return true;
+        }
+
+        public Web.WebDiscord GetWebDiscord()
+        {
+            return new Web.WebDiscord
+            {
+                Running = switch_DiscordBot.IsOn,
+                Busy = !switch_DiscordBot.IsEnabled,
+                HasToken = !string.IsNullOrWhiteSpace(DiscordBot.Configs.GetBotToken()),
+                Prefix = DiscordBot.Configs.GetBotPrefix(),
+                AutoStart = MahAppSwitch_DiscordBotAutoStart.IsOn,
+                Commands = DiscordBot.Configs.GetCommandsList(),
+                InviteLink = switch_DiscordBot.IsOn ? g_DiscordBot.GetInviteLink() : string.Empty,
+                Admins = DiscordBot.Configs.GetBotAdminList().Select(admin => new Web.WebDiscordAdmin { Id = admin.Item1, Servers = admin.Item2 }).ToArray()
+            };
+        }
+
+        // Returns null when saved, otherwise the reason it was refused
+        public string SaveWebDiscord(Web.WebDiscord discord)
+        {
+            string prefix = discord?.Prefix?.Trim() ?? string.Empty;
+            if (prefix.Length > 10 || prefix.Any(char.IsWhiteSpace)) { return "The prefix must be 10 characters or fewer, with no spaces."; }
+
+            var admins = (discord?.Admins ?? Array.Empty<Web.WebDiscordAdmin>()).Select(admin => (admin.Id?.Trim(), admin.Servers?.Replace(" ", string.Empty))).ToList();
+            if (admins.Any(admin => !Web.WebAuth.IsValidDiscordAdmin(admin.Item1, admin.Item2))) { return "Each admin needs a Discord user ID and server IDs like 1,2 or 0 for all."; }
+
+            string token = discord?.NewToken?.Trim();
+            if (!string.IsNullOrEmpty(token) && token.Any(char.IsWhiteSpace)) { return "That bot token is not valid."; }
+
+            DiscordBot.Configs.SetBotPrefix(prefix);
+            if (!string.IsNullOrEmpty(token)) { DiscordBot.Configs.SetBotToken(token); }
+            DiscordBot.Configs.SetBotAdminList(admins);
+            MahAppSwitch_DiscordBotAutoStart.IsOn = discord?.AutoStart == true;
+            Refresh_DiscordBotAdminList();
+            return null;
+        }
+
+        public bool SetWebDiscordRunning(bool running)
+        {
+            if (!switch_DiscordBot.IsEnabled) { return false; }
+
+            // The switch starts or stops the bot, the same as clicking it
+            switch_DiscordBot.IsOn = running;
+            return true;
         }
 
         public RustPlugin[] GetWebPlugins(string serverId)

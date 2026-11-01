@@ -9,6 +9,8 @@ namespace ToolCupboard.DiscordBot
 {
 	class Bot
 	{
+		private const int READY_TIMEOUT_SECONDS = 15;
+
 		private DiscordSocketClient _client;
 		private CancellationTokenSource _cancellationTokenSource;
 
@@ -25,6 +27,9 @@ namespace ToolCupboard.DiscordBot
 			});
 			_client.Ready += On_Bot_Ready;
 
+			var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+			_client.Ready += () => { ready.TrySetResult(true); return Task.CompletedTask; };
+
 			try
 			{
 				await _client.LoginAsync(TokenType.Bot, Configs.GetBotToken());
@@ -32,6 +37,13 @@ namespace ToolCupboard.DiscordBot
 			}
 			catch
 			{
+				return false;
+			}
+
+			// A bad token or a missing intent only shows up as never becoming ready
+			if (await Task.WhenAny(ready.Task, Task.Delay(TimeSpan.FromSeconds(READY_TIMEOUT_SECONDS))) != ready.Task)
+			{
+				await _client.StopAsync();
 				return false;
 			}
 

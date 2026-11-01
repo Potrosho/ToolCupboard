@@ -40,6 +40,31 @@ namespace ToolCupboard.Tests
             Assert.Equal(confirmed, WebAuth.IsConfirmed(typed, name));
         }
 
+        [Theory]
+        [InlineData("https://discord.com/api/webhooks/1/abc", true)]
+        [InlineData("https://discordapp.com/api/webhooks/1/abc", true)]
+        [InlineData("http://discord.com/api/webhooks/1/abc", false)]
+        [InlineData("https://discord.com.evil.example/api/webhooks/1/abc", false)]
+        [InlineData("https://evil.example/api/webhooks/1/abc", false)]
+        [InlineData("https://discord.com/users/1", false)]
+        [InlineData("not a url", false)]
+        public void AlertsOnlyGoToDiscordWebhooks(string url, bool valid)
+        {
+            Assert.Equal(valid, WebAuth.IsDiscordWebhook(url));
+        }
+
+        [Theory]
+        [InlineData("348921660361146380", "0", true)]
+        [InlineData("348921660361146380", "1,2", true)]
+        [InlineData("not-an-id", "0", false)]
+        [InlineData("348921660361146380", "", false)]
+        [InlineData("348921660361146380", "1,", false)]
+        [InlineData("348921660361146380\n999", "0", false)]
+        public void DiscordAdminsMustBeWellFormed(string id, string servers, bool valid)
+        {
+            Assert.Equal(valid, WebAuth.IsValidDiscordAdmin(id, servers));
+        }
+
         // index.html reads these names, and the API sends web-style JSON
         [Fact]
         public void PlayersSerializeWithTheNamesThePageReads()

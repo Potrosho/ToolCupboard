@@ -151,6 +151,38 @@ namespace ToolCupboard.Web
 
             api.MapPost("/api/servers/{id}/plugins/upload", async (string id, WebPluginUpload upload) => Refused(await OnWindow(() => _window.AddWebPlugin(id, upload))));
 
+            api.MapGet("/api/system", async () => Results.Json(await OnWindow(_window.GetWebSystem)));
+
+            api.MapPut("/api/system/options", async (WebAppOptions options) => { await OnWindow(() => _window.SaveWebOptions(options)); return Results.Ok(); });
+
+            api.MapGet("/api/discord", async () => Results.Json(await OnWindow(_window.GetWebDiscord)));
+
+            api.MapPut("/api/discord", async (WebDiscord discord) => Refused(await OnWindow(() => _window.SaveWebDiscord(discord))));
+
+            api.MapPost("/api/discord/{action}", async (string action) =>
+            {
+                if (action != "start" && action != "stop") { return Results.NotFound(); }
+                return await OnWindow(() => _window.SetWebDiscordRunning(action == "start")) ? Results.Ok() : Results.Conflict();
+            });
+
+            api.MapGet("/api/job", async () => Results.Json(await OnWindow(_window.GetWebJob)));
+
+            api.MapPost("/api/job", async (WebNewServer request) =>
+            {
+                if (request?.Kind != "install" && request?.Kind != "import") { return Results.NotFound(); }
+                return Refused(await OnWindow(() => _window.StartWebJob(request.Kind, request.Name, request.Path)));
+            });
+
+            api.MapPost("/api/servers/{id}/delete", async (string id, WebConfirmed request) => Refused(await OnWindow(() => _window.DeleteWebServer(id, request))));
+
+            api.MapGet("/api/servers/{id}/config-file", async (string id) =>
+            {
+                string text = await OnWindow(() => _window.GetWebConfigFile(id));
+                return text == null ? Results.NotFound() : Results.Json(new { text });
+            });
+
+            api.MapPut("/api/servers/{id}/config-file", async (string id, WebCommand body) => Refused(await OnWindow(() => _window.SaveWebConfigFile(id, body?.Text))));
+
             api.MapGet("/api/plugins/search", async (string query, int? page) =>
             {
                 try
