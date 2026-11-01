@@ -101,6 +101,8 @@ namespace ToolCupboard.Web
 
         private Task<T> OnWindow<T>(Func<Task<T>> action) => _dispatcher.InvokeAsync(action).Task.Unwrap();
 
+        private static IResult Refused(string error) => error == null ? Results.Ok() : Results.Json(new { error }, statusCode: StatusCodes.Status409Conflict);
+
         private void MapApi(IEndpointRouteBuilder api)
         {
             api.MapGet("/api/servers", async () => Results.Json(await OnWindow(_window.GetWebServers)));
@@ -123,6 +125,32 @@ namespace ToolCupboard.Web
                 return sent ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/settings", async (string id) =>
+            {
+                WebSettings settings = await OnWindow(() => _window.GetWebSettings(id));
+                return settings == null ? Results.NotFound() : Results.Json(settings);
+            });
+
+            api.MapPut("/api/servers/{id}/settings", async (string id, WebSettings settings) => Refused(await OnWindow(() => _window.SaveWebSettings(id, settings))));
+
+            api.MapGet("/api/servers/{id}/wipe", async (string id) =>
+            {
+                object info = await OnWindow(() => _window.GetWebWipeInfo(id));
+                return info == null ? Results.NotFound() : Results.Json(info);
+            });
+
+            api.MapPost("/api/servers/{id}/wipe", async (string id, WebConfirmed request) => Refused(await OnWindow(() => _window.RunWebWipe(id, request))));
+
+            api.MapGet("/api/servers/{id}/backups", async (string id) =>
+            {
+                object[] backups = await OnWindow(() => _window.GetWebBackups(id));
+                return backups == null ? Results.NotFound() : Results.Json(backups);
+            });
+
+            api.MapPost("/api/servers/{id}/backups/restore", async (string id, WebConfirmed request) => Refused(await OnWindow(() => _window.RestoreWebBackup(id, request))));
+
+            api.MapPost("/api/servers/{id}/plugins/upload", async (string id, WebPluginUpload upload) => Refused(await OnWindow(() => _window.AddWebPlugin(id, upload))));
+
             api.MapGet("/api/plugins/search", async (string query, int? page) =>
             {
                 try
@@ -144,7 +172,7 @@ namespace ToolCupboard.Web
             api.MapPost("/api/servers/{id}/plugins/install", async (string id, WebCommand body) =>
             {
                 string error = await OnWindow(() => _window.InstallWebPlugin(id, body?.Text));
-                return error == null ? Results.Ok() : Results.Json(new { error }, statusCode: StatusCodes.Status409Conflict);
+                return Refused(error);
             });
 
             api.MapPost("/api/servers/{id}/plugins/{name}/{action}", async (string id, string name, string action) =>

@@ -21,6 +21,11 @@ namespace ToolCupboard.Web
                 || string.Equals(host, $"localhost:{port}", StringComparison.OrdinalIgnoreCase);
         }
 
+        public static bool IsConfirmed(string typed, string serverName)
+        {
+            return !string.IsNullOrEmpty(serverName) && typed == serverName;
+        }
+
         public static bool IsValidToken(string token, string expected)
         {
             if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(expected)) { return false; }

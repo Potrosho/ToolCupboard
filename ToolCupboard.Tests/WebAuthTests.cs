@@ -28,6 +28,18 @@ namespace ToolCupboard.Tests
             Assert.Equal(valid, WebAuth.IsValidToken(token, expected));
         }
 
+        [Theory]
+        [InlineData("Potrosho's Backyard", "Potrosho's Backyard", true)]
+        [InlineData("potrosho's backyard", "Potrosho's Backyard", false)]
+        [InlineData("Potrosho's Backyard ", "Potrosho's Backyard", false)]
+        [InlineData("", "Potrosho's Backyard", false)]
+        [InlineData(null, "Potrosho's Backyard", false)]
+        [InlineData("", "", false)]
+        public void DangerousActionsNeedTheExactServerName(string typed, string name, bool confirmed)
+        {
+            Assert.Equal(confirmed, WebAuth.IsConfirmed(typed, name));
+        }
+
         // index.html reads these names, and the API sends web-style JSON
         [Fact]
         public void PlayersSerializeWithTheNamesThePageReads()

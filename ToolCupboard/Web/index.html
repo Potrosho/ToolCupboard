@@ -97,8 +97,9 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 .state-Stopped { color: var(--color-muted); }
 .state-busy { color: var(--color-busy); }
 .note { margin: 0; padding: 10px 6px; color: var(--color-muted); }
-.tabs { display: flex; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid var(--color-rule); }
+.tabs { display: flex; gap: 4px; margin-bottom: 8px; overflow-x: auto; border-bottom: 1px solid var(--color-rule); }
 .tabs button { min-height: 38px; border: 0; border-radius: var(--radius-control) var(--radius-control) 0 0; color: var(--color-muted); }
+select { width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid var(--color-rule); border-radius: var(--radius-control); background: var(--color-well); color: var(--color-ink); font: inherit; }
 .tabs button[aria-selected="true"] { color: var(--color-ink); background: var(--color-paper-3); font-weight: 600; }
 #plugins-view { display: grid; gap: 22px; padding: 16px; border: 1px solid var(--color-rule); border-radius: var(--radius-well); background: var(--color-paper-2); }
 form.search { display: flex; gap: 8px; margin-bottom: 6px; }
@@ -115,6 +116,15 @@ form.search { display: flex; gap: 8px; margin-bottom: 6px; }
 .pager button { min-height: 30px; padding: 0 10px; font-size: 14px; }
 .framework-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .framework-setup p { flex: 1 1 240px; margin: 0; color: var(--color-muted); }
+.panel { display: grid; gap: 20px; padding: 16px; border: 1px solid var(--color-rule); border-radius: var(--radius-well); background: var(--color-paper-2); }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.fields .wide { grid-column: 1 / -1; }
+.field span { display: block; margin-bottom: 3px; color: var(--color-muted); font-size: 14px; }
+.check { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.check input { width: 18px; min-height: 18px; margin: 0; accent-color: var(--color-accent); }
+.form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.form-status { color: var(--color-muted); }
+.warning { margin: 0; color: var(--color-busy); }
 td.player-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 0; }
 td.player-actions button { min-height: 30px; padding: 0 10px; font-size: 14px; }
 tr.player td { border-bottom: 0; padding-bottom: 4px; }
@@ -132,6 +142,7 @@ dialog .actions { justify-content: flex-end; }
   .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .facts div:first-child { grid-column: 1 / -1; }
   .row-actions { justify-content: flex-start; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
   #console { height: 44vh; }
   h1 { font-size: 28px; }
   button { min-height: 44px; }
@@ -181,6 +192,9 @@ dialog .actions { justify-content: flex-end; }
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-console" aria-selected="true" aria-controls="console-view">Console</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
+        <button role="tab" id="tab-wipe" aria-selected="false" aria-controls="wipe-view">Wipe</button>
+        <button role="tab" id="tab-backups" aria-selected="false" aria-controls="backups-view">Backups</button>
+        <button role="tab" id="tab-settings" aria-selected="false" aria-controls="settings-view">Settings</button>
       </div>
       <div class="well" id="console-well">
         <pre id="console" tabindex="0" aria-live="off"></pre>
@@ -194,6 +208,11 @@ dialog .actions { justify-content: flex-end; }
           <p>Plugins need Oxide or Carbon. Stop the server, then install one.</p>
           <button id="install-oxide" type="button">Install Oxide</button>
           <button id="install-carbon" type="button">Install Carbon</button>
+        </div>
+        <div class="form-actions" id="framework-manage" hidden>
+          <button id="plugin-upload" type="button">Add plugin file</button>
+          <input id="plugin-file" type="file" accept=".cs" aria-label="Plugin file" hidden>
+          <button id="remove-framework" type="button" class="danger">Remove framework</button>
         </div>
         <div>
           <h2>Installed</h2>
@@ -220,6 +239,62 @@ dialog .actions { justify-content: flex-end; }
           </div>
         </div>
       </div>
+      <div id="wipe-view" class="panel" role="tabpanel" hidden>
+        <div class="fields">
+          <label class="field wide"><span>Wipe type</span>
+            <select id="wipe-type"><option value="Map">Map wipe</option><option value="Blueprints">Blueprint wipe</option><option value="Full">Full wipe (map, blueprints, and player data)</option></select>
+          </label>
+          <label class="check wide"><input id="wipe-new-seed" type="checkbox" checked>Use a new random seed</label>
+        </div>
+        <p class="form-status" id="wipe-files"></p>
+        <p class="warning">Bans, admins, and Rust+ pairing are kept. The last 3 wipes stay in the server's wipe-backups folder.</p>
+        <div class="form-actions"><button id="wipe-now" type="button" class="danger">Wipe now</button><span class="form-status" id="wipe-status"></span></div>
+      </div>
+      <div id="backups-view" class="panel" role="tabpanel" hidden>
+        <table id="backups-list" hidden>
+          <thead><tr><th scope="col">Backup</th><th scope="col" class="num">Size</th><th scope="col"><span hidden>Actions</span></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note" id="backups-note">No backups yet</p>
+        <p class="form-status" id="backups-status"></p>
+      </div>
+      <form id="settings-view" class="panel" role="tabpanel" hidden>
+        <div>
+          <h2>Automation</h2>
+          <label class="check"><input id="set-autoStart" type="checkbox">Start with ToolCupboard</label>
+          <label class="check"><input id="set-autoRestart" type="checkbox">Restart after a crash</label>
+          <label class="check"><input id="set-autoUpdate" type="checkbox">Update automatically</label>
+          <label class="check"><input id="set-updateOnStart" type="checkbox">Update on start</label>
+          <label class="check"><input id="set-backupOnStart" type="checkbox">Back up on start</label>
+          <label class="check"><input id="set-restartSchedule" type="checkbox">Scheduled restarts</label>
+          <label class="field"><span>Restart schedule (crontab)</span><input id="set-restartCrontab" autocomplete="off"></label>
+        </div>
+        <div>
+          <h2>Scheduled wipe</h2>
+          <label class="check"><input id="set-wipeSchedule" type="checkbox">Scheduled wipes</label>
+          <div class="fields">
+            <label class="field"><span>Wipe schedule (crontab)</span><input id="set-wipeCrontab" autocomplete="off"></label>
+            <label class="field"><span>Wipe type</span><select id="set-wipeType"><option>Map</option><option>Blueprints</option><option>Full</option></select></label>
+          </div>
+          <label class="check"><input id="set-wipeNewSeed" type="checkbox">Use a new random seed</label>
+          <p class="form-status" id="set-next-wipe"></p>
+        </div>
+        <div>
+          <h2>Server</h2>
+          <div class="fields">
+            <label class="field"><span>World size</span><input id="set-worldSize" inputmode="numeric" autocomplete="off"></label>
+            <label class="field"><span>Seed</span><input id="set-seed" inputmode="numeric" autocomplete="off"></label>
+            <label class="field"><span>Tick rate</span><input id="set-tickRate" inputmode="numeric" autocomplete="off"></label>
+            <label class="field"><span>Save interval (seconds)</span><input id="set-saveInterval" inputmode="numeric" autocomplete="off"></label>
+            <label class="field"><span>Maximum backups</span><input id="set-maximumBackups" inputmode="numeric" autocomplete="off"></label>
+            <label class="field wide"><span>Description</span><input id="set-description" autocomplete="off"></label>
+            <label class="field wide"><span>Website URL</span><input id="set-url" autocomplete="off"></label>
+            <label class="field wide"><span>Header image URL</span><input id="set-headerImage" autocomplete="off"></label>
+          </div>
+          <label class="check"><input id="set-rustPlus" type="checkbox">Enable Rust+</label>
+        </div>
+        <div class="form-actions"><button id="settings-save" class="primary">Save settings</button><span class="form-status" id="settings-status"></span></div>
+      </form>
     </section>
     <aside>
       <section aria-labelledby="servers-title">
@@ -244,7 +319,7 @@ dialog .actions { justify-content: flex-end; }
   <form method="dialog">
     <h2 id="confirm-title"></h2>
     <p id="confirm-text"></p>
-    <label id="confirm-reason-label">Reason (shown to the player)<input id="confirm-reason" maxlength="200" autocomplete="off"></label>
+    <label id="confirm-reason-label"><span id="confirm-reason-text"></span><input id="confirm-reason" maxlength="200" autocomplete="off"></label>
     <div class="actions">
       <button value="cancel">Cancel</button>
       <button value="ok" id="confirm-ok" class="primary">Confirm</button>
@@ -285,17 +360,30 @@ function statusClass(status) {
   return status === 'Started' ? 'state-Started' : status === 'Stopped' ? 'state-Stopped' : 'state-busy';
 }
 
-function confirmAction(title, text, wantsReason) {
+function confirmAction(title, text, wantsReason, inputLabel = 'Reason (shown to the player)') {
   return new Promise(resolve => {
     const dialog = $('confirm');
     $('confirm-title').textContent = title;
     $('confirm-text').textContent = text;
     $('confirm-reason-label').hidden = !wantsReason;
+    $('confirm-reason-text').textContent = inputLabel;
     $('confirm-reason').value = '';
     dialog.returnValue = 'cancel';
     dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok' ? $('confirm-reason').value : null), { once: true });
     dialog.showModal();
   });
+}
+
+// The server checks the typed name too. Returns what was typed, or null if cancelled
+function confirmByName(title, text) {
+  const name = current().name;
+  return confirmAction(title, `${text} Type ${name} to confirm.`, true, 'Server name');
+}
+
+async function send(path, method, body) {
+  const response = await fetch(`/api/${path}`, { method, headers: { 'X-ToolCupboard-Token': token || '', 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  if (response?.ok) { return null; }
+  return (await response?.json().catch(() => null))?.error || 'The request failed.';
 }
 
 let servers = [];
@@ -362,6 +450,8 @@ function renderSelected() {
   $('command-text').placeholder = running ? 'Type a server command' : 'Start the server to send commands';
   $('console-well').dataset.live = String(running);
   $('framework-setup').hidden = !server || server.framework !== 'None';
+  $('framework-manage').hidden = !server || server.framework === 'None';
+  $('remove-framework').disabled = status !== 'Stopped';
   $('install-oxide').disabled = status !== 'Stopped';
   $('install-carbon').disabled = status !== 'Stopped';
 }
@@ -373,7 +463,7 @@ function select(id) {
   history.replaceState(null, '', `?${params}`);
   $('console').textContent = '';
   renderServers();
-  if (view === 'plugins') { refreshInstalled(); }
+  refreshView();
   refreshDetails();
 }
 
@@ -464,25 +554,133 @@ async function refreshPlayers() {
 
 function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
-let view = new URLSearchParams(location.search).get('view') === 'plugins' ? 'plugins' : 'console';
+let view = new URLSearchParams(location.search).get('view') || 'console';
 
-function showView(name) {
-  view = name;
-  const plugins = name === 'plugins';
-  $('console-well').hidden = plugins;
-  $('plugins-view').hidden = !plugins;
-  $('tab-console').setAttribute('aria-selected', String(!plugins));
-  $('tab-plugins').setAttribute('aria-selected', String(plugins));
-  const params = new URLSearchParams(location.search);
-  if (plugins) { params.set('view', 'plugins'); } else { params.delete('view'); }
-  history.replaceState(null, '', `?${params}`);
-  if (plugins) {
+const views = { console: 'console-well', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view' };
+
+function refreshView() {
+  if (view === 'plugins') {
     refreshInstalled();
     if (!$('results').tBodies[0].rows.length) { searchPlugins(1); }
   }
+  if (view === 'wipe') { refreshWipe(); }
+  if (view === 'backups') { refreshBackups(); }
+  if (view === 'settings') { refreshSettings(); }
 }
-$('tab-console').onclick = () => showView('console');
-$('tab-plugins').onclick = () => showView('plugins');
+
+function showView(name) {
+  view = name;
+  for (const [key, id] of Object.entries(views)) {
+    $(id).hidden = key !== name;
+    $(`tab-${key}`).setAttribute('aria-selected', String(key === name));
+  }
+  const params = new URLSearchParams(location.search);
+  if (name === 'console') { params.delete('view'); } else { params.set('view', name); }
+  history.replaceState(null, '', `?${params}`);
+  refreshView();
+}
+for (const key of Object.keys(views)) { $(`tab-${key}`).onclick = () => showView(key); }
+
+let wipeCounts = null;
+
+function renderWipeFiles() {
+  const key = { Map: 'map', Blueprints: 'blueprints', Full: 'full' }[$('wipe-type').value];
+  setText($('wipe-files'), wipeCounts ? `${wipeCounts[key]} ${wipeCounts[key] === 1 ? 'file' : 'files'} will be wiped` : '');
+}
+
+async function refreshWipe() {
+  if (!selected) { return; }
+  wipeCounts = await api(`servers/${selected}/wipe`).catch(() => null);
+  renderWipeFiles();
+}
+$('wipe-type').onchange = renderWipeFiles;
+
+$('wipe-now').onclick = async () => {
+  const server = current();
+  if (!server) { return; }
+  if (server.status !== 'Stopped') { setText($('wipe-status'), 'Stop the server first.'); return; }
+  const type = $('wipe-type').value;
+  const confirm = await confirmByName(`${type} wipe`, `Wipe ${server.name}? Files move to the wipe-backups folder.`);
+  if (confirm === null) { return; }
+  const error = await send(`servers/${selected}/wipe`, 'POST', { confirm, type, newSeed: $('wipe-new-seed').checked });
+  setText($('wipe-status'), error || 'Wipe complete.');
+  refreshWipe();
+};
+
+async function refreshBackups() {
+  if (!selected) { return; }
+  const backups = await api(`servers/${selected}/backups`).catch(() => null) || [];
+  const body = $('backups-list').tBodies[0];
+  body.replaceChildren();
+  $('backups-list').hidden = !backups.length;
+  $('backups-note').hidden = !!backups.length;
+  for (const backup of backups) {
+    const row = body.insertRow();
+    row.className = 'plugin-row';
+    row.insertCell().textContent = backup.created;
+    const size = row.insertCell();
+    size.className = 'num';
+    size.textContent = `${backup.sizeMb} MB`;
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    actions.append(actionButton('Restore', async () => {
+      if (current()?.status !== 'Stopped') { setText($('backups-status'), 'Stop the server first.'); return; }
+      const confirm = await confirmByName('Restore backup', `Replace ${current().name} with the backup from ${backup.created}?`);
+      if (confirm === null) { return; }
+      setText($('backups-status'), 'Restoring');
+      const error = await send(`servers/${selected}/backups/restore`, 'POST', { confirm, file: backup.file });
+      setText($('backups-status'), error || 'Backup restored.');
+      refreshBackups();
+    }));
+    row.insertCell().append(actions);
+  }
+}
+
+const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'rustPlus'];
+
+async function refreshSettings() {
+  if (!selected) { return; }
+  const settings = await api(`servers/${selected}/settings`).catch(() => null);
+  if (!settings) { return; }
+  for (const name of settingFields) {
+    const field = $(`set-${name}`);
+    if (field.type === 'checkbox') { field.checked = settings[name]; } else { field.value = settings[name] ?? ''; }
+  }
+  setText($('set-next-wipe'), settings.nextWipe ? `Next match: ${settings.nextWipe}` : '');
+}
+
+$('settings-view').onsubmit = async event => {
+  event.preventDefault();
+  const body = {};
+  for (const name of settingFields) {
+    const field = $(`set-${name}`);
+    body[name] = field.type === 'checkbox' ? field.checked : field.value;
+  }
+  body.maximumBackups = Number(body.maximumBackups) || 0;
+  const error = await send(`servers/${selected}/settings`, 'PUT', body);
+  setText($('settings-status'), error || 'Saved. Server settings apply the next time it starts.');
+  if (!error) { refreshSettings(); }
+};
+
+$('plugin-upload').onclick = () => $('plugin-file').click();
+$('plugin-file').onchange = async () => {
+  const file = $('plugin-file').files[0];
+  $('plugin-file').value = '';
+  if (!file) { return; }
+  const error = await send(`servers/${selected}/plugins/upload`, 'POST', { fileName: file.name, text: await file.text() });
+  if (error) { await confirmAction('Could not add plugin', error, false); }
+  refreshInstalled();
+};
+
+$('remove-framework').onclick = async () => {
+  const server = current();
+  if (!server) { return; }
+  const note = server.framework === 'Oxide' ? ' An Update Validate will run to restore the game files.' : '';
+  if (await confirmAction('Remove framework', `Remove ${server.framework}? Plugins and their configs are kept.${note}`, false) === null) { return; }
+  await api(`servers/${selected}/remove-framework`, { method: 'POST' }).catch(() => null);
+  await refreshServers();
+  refreshInstalled();
+};
 
 async function pluginAction(plugin, action) {
   await api(`servers/${selected}/plugins/${encodeURIComponent(plugin.name)}/${action}`, { method: 'POST' }).catch(() => null);
@@ -660,7 +858,7 @@ function tick() {
   if (document.hidden) { return; }
   refreshServers().then(refreshConsole);
 }
-refreshServers().then(() => { refreshDetails(); showView(view); });
+refreshServers().then(() => { refreshDetails(); showView(views[view] ? view : 'console'); });
 setInterval(tick, 2000);
 setInterval(() => { if (!document.hidden) { refreshPlayers(); } }, 6000);
 </script>

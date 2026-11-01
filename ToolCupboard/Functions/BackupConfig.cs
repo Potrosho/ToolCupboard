@@ -34,6 +34,12 @@ namespace ToolCupboard.Functions
             LoadConfig();
         }
 
+        public static void SetMaximumBackups(string serverId, int maximum)
+        {
+            var config = new BackupConfig(serverId);
+            File.WriteAllText(ServerPath.GetServersConfigs(serverId, "BackupConfig.cfg"), $"{SettingName.BackupLocation}=\"{config.BackupLocation}\"{Environment.NewLine}{SettingName.MaximumBackups}=\"{maximum}\"");
+        }
+
         public void Open()
         {
             Functions.ProcessManagement.OpenShell(ServerPath.GetServersConfigs(_serverId, "BackupConfig.cfg"));

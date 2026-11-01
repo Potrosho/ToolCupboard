@@ -10,7 +10,7 @@ ToolCupboard is a Windows desktop manager for Rust dedicated servers. It install
   * **Automation** - Auto start, auto restart after crashes, auto update, and scheduled restarts.
   * **RCON** - Live console and chat, safe save and shutdown, and in-game restart warnings.
   * **Players** - See who is online, and kick or ban players.
-  * **Web dashboard** - Run servers, the console, and players from your browser. Click **Web UI** in the app. It only accepts connections from the same PC.
+  * **Web dashboard** - Run servers, the console, players, wipes, backups, and settings from your browser. Click **Web UI** in the app. It only accepts connections from the same PC.
   * **Plugins** - Search uMod from the dashboard, then install, disable, reload, or delete plugins on Oxide or Carbon.
   * **Backups** - Back up and restore server files.
   * **Oxide** - Install or update Oxide on a server.

@@ -1237,6 +1237,10 @@ namespace ToolCupboard
                 case "backup": if (!stopped) { return false; } await GameServer_Backup(server); return true;
                 case "install-oxide": return stopped && await RunWebInstall(server, RustModFramework.Oxide);
                 case "install-carbon": return stopped && await RunWebInstall(server, RustModFramework.Carbon);
+                case "remove-framework":
+                    if (!stopped || RustMods.Detect(server.ID) == RustModFramework.None) { return false; }
+                    await RemoveFramework(server);
+                    return true;
                 default: return null;
             }
         }
@@ -1248,6 +1252,160 @@ namespace ToolCupboard
             server.Framework = RustMods.Detect(server.ID).ToString();
             ServerGrid.Items.Refresh();
             return error == null;
+        }
+
+        public Web.WebSettings GetWebSettings(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            return new Web.WebSettings
+            {
+                AutoStart = metadata.AutoStart,
+                AutoRestart = metadata.AutoRestart,
+                AutoUpdate = metadata.AutoUpdate,
+                UpdateOnStart = metadata.UpdateOnStart,
+                BackupOnStart = metadata.BackupOnStart,
+                RestartSchedule = metadata.RestartCrontab,
+                RestartCrontab = metadata.CrontabFormat,
+                WipeSchedule = metadata.WipeCrontab,
+                WipeCrontab = metadata.WipeCrontabFormat,
+                WipeType = metadata.WipeType.ToString(),
+                WipeNewSeed = metadata.WipeNewSeed,
+                NextWipe = CrontabSchedule.TryParse(metadata.WipeCrontabFormat)?.GetNextOccurrence(DateTime.Now).ToString("ddd, MM/dd/yyyy HH:mm"),
+                MaximumBackups = new BackupConfig(server.ID).MaximumBackups,
+                WorldSize = RustConfig.Get(server.ID, "server.worldsize"),
+                Seed = RustConfig.Get(server.ID, "server.seed"),
+                TickRate = RustConfig.Get(server.ID, "server.tickrate"),
+                SaveInterval = RustConfig.Get(server.ID, "server.saveinterval"),
+                Description = RustConfig.Get(server.ID, "server.description"),
+                Url = RustConfig.Get(server.ID, "server.url"),
+                HeaderImage = RustConfig.Get(server.ID, "server.headerimage"),
+                RustPlus = RustConfig.Get(server.ID, "app.port") != "-1"
+            };
+        }
+
+        // Returns null when saved, otherwise the reason it was refused
+        public string SaveWebSettings(string serverId, Web.WebSettings settings)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+
+            if (CrontabSchedule.TryParse(settings.RestartCrontab ?? string.Empty) == null) { return "The restart schedule is not valid."; }
+            if (CrontabSchedule.TryParse(settings.WipeCrontab ?? string.Empty) == null) { return "The wipe schedule is not valid."; }
+            if (!Enum.TryParse(settings.WipeType, out RustWipeType wipeType) || !Enum.IsDefined(typeof(RustWipeType), wipeType)) { return "The wipe type is not valid."; }
+            if (settings.MaximumBackups < 1 || settings.MaximumBackups > 100) { return "Maximum backups must be between 1 and 100."; }
+
+            string error = SaveServerSettings(server, settings.WorldSize, settings.Seed, settings.TickRate, settings.SaveInterval, settings.Description, settings.Url, settings.HeaderImage, settings.RustPlus);
+            if (error != null) { return error; }
+
+            ServerMetadata metadata = _serverMetadata[int.Parse(server.ID)];
+            void SaveFlag(string name, bool value) => ServerConfig.SetSetting(server.ID, name, value ? "1" : "0");
+
+            metadata.AutoStart = settings.AutoStart; SaveFlag(ServerConfig.SettingName.AutoStart, settings.AutoStart);
+            metadata.AutoRestart = settings.AutoRestart; SaveFlag(ServerConfig.SettingName.AutoRestart, settings.AutoRestart);
+            metadata.AutoUpdate = settings.AutoUpdate; SaveFlag(ServerConfig.SettingName.AutoUpdate, settings.AutoUpdate);
+            metadata.UpdateOnStart = settings.UpdateOnStart; SaveFlag(ServerConfig.SettingName.UpdateOnStart, settings.UpdateOnStart);
+            metadata.BackupOnStart = settings.BackupOnStart; SaveFlag(ServerConfig.SettingName.BackupOnStart, settings.BackupOnStart);
+            metadata.RestartCrontab = settings.RestartSchedule; SaveFlag(ServerConfig.SettingName.RestartCrontab, settings.RestartSchedule);
+            metadata.CrontabFormat = settings.RestartCrontab;
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.CrontabFormat, settings.RestartCrontab);
+
+            // Saving other settings must not push back a wipe that is already due
+            if (metadata.WipeCrontab != settings.WipeSchedule || metadata.WipeCrontabFormat != settings.WipeCrontab)
+            {
+                metadata.WipeLast = DateTime.Now;
+                ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeLast, metadata.WipeLast.ToString("o"));
+            }
+
+            metadata.WipeCrontab = settings.WipeSchedule; SaveFlag(ServerConfig.SettingName.WipeCrontab, settings.WipeSchedule);
+            metadata.WipeCrontabFormat = settings.WipeCrontab;
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeCrontabFormat, settings.WipeCrontab);
+            metadata.WipeType = wipeType;
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeType, wipeType.ToString());
+            metadata.WipeNewSeed = settings.WipeNewSeed; SaveFlag(ServerConfig.SettingName.WipeNewSeed, settings.WipeNewSeed);
+            BackupConfig.SetMaximumBackups(server.ID, settings.MaximumBackups);
+
+            if (ServerGrid.SelectedItem == server) { DataGrid_RefreshElements(); }
+            return null;
+        }
+
+        public object GetWebWipeInfo(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : new
+            {
+                map = RustWipe.GetFiles(server.ID, RustWipeType.Map).Count,
+                blueprints = RustWipe.GetFiles(server.ID, RustWipeType.Blueprints).Count,
+                full = RustWipe.GetFiles(server.ID, RustWipeType.Full).Count
+            };
+        }
+
+        // Returns null when wiped, otherwise the reason it was refused
+        public async Task<string> RunWebWipe(string serverId, Web.WebConfirmed request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            if (!Web.WebAuth.IsConfirmed(request?.Confirm, server.Name)) { return "The server name did not match."; }
+            if (!Enum.TryParse(request.Type, out RustWipeType type) || !Enum.IsDefined(typeof(RustWipeType), type)) { return "The wipe type is not valid."; }
+            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before wiping it."; }
+
+            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Restoring;
+            SetServerStatus(server, "Wiping");
+            bool wiped = await WipeServerData(server, type, request.NewSeed);
+            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+            SetServerStatus(server, "Stopped");
+
+            return wiped ? null : "The wipe failed, and the files were put back. Check the log.";
+        }
+
+        public object[] GetWebBackups(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            var location = new DirectoryInfo(new BackupConfig(server.ID).BackupLocation);
+            if (!location.Exists) { return Array.Empty<object>(); }
+
+            return location.GetFiles($"ToolCupboard-Backup-Server-{server.ID}-*.zip")
+                .OrderByDescending(file => file.LastWriteTime)
+                .Select(file => (object)new { file = file.Name, sizeMb = Math.Round(file.Length / 1048576.0, 1), created = file.LastWriteTime.ToString("yyyy-MM-dd HH:mm") })
+                .ToArray();
+        }
+
+        // Returns null when restored, otherwise the reason it was refused
+        public async Task<string> RestoreWebBackup(string serverId, Web.WebConfirmed request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            if (!Web.WebAuth.IsConfirmed(request?.Confirm, server.Name)) { return "The server name did not match."; }
+            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before restoring a backup."; }
+
+            // Only names from the backup list are accepted, so a path cannot be passed in
+            string backup = new DirectoryInfo(new BackupConfig(server.ID).BackupLocation).GetFiles($"ToolCupboard-Backup-Server-{server.ID}-*.zip").FirstOrDefault(file => file.Name == request.File)?.Name;
+            if (backup == null) { return "That backup does not exist."; }
+
+            return await GameServer_RestoreBackup(server, backup) ? null : "The restore failed, and the server was left as it was. Check the log.";
+        }
+
+        // Returns null when added, otherwise the reason it was refused
+        public string AddWebPlugin(string serverId, Web.WebPluginUpload upload)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+
+            RustModFramework framework = RustMods.Detect(server.ID);
+            if (framework == RustModFramework.None) { return "Install Oxide or Carbon first."; }
+
+            string fileName = upload?.FileName ?? string.Empty;
+            string name = Path.GetFileNameWithoutExtension(fileName);
+            if (!fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || !UmodCatalog.IsValidPluginName(name)) { return "Choose a .cs plugin file with a plain file name."; }
+            if (string.IsNullOrEmpty(upload.Text) || upload.Text.Length > 5 * 1024 * 1024) { return "The plugin file is empty or too large."; }
+
+            RustMods.WritePlugin(server.ID, framework, name, System.Text.Encoding.UTF8.GetBytes(upload.Text));
+            Log(server.ID, $"Mods: Added plugin {name} from the web UI");
+            return null;
         }
 
         public RustPlugin[] GetWebPlugins(string serverId)
@@ -1337,6 +1495,32 @@ namespace ToolCupboard
             ToggleMahappFlyout(MahAppFlyout_ServerSettings);
         }
 
+        // Returns null when saved, otherwise what is wrong with the values
+        private string SaveServerSettings(ServerTable server, string worldSize, string seed, string tickRate, string saveInterval, string description, string url, string headerImage, bool rustPlus)
+        {
+            if (!IsNumberInRange(worldSize, 1000, 6000)) { return "World size must be between 1000 and 6000"; }
+            if (!IsNumberInRange(seed, 0, int.MaxValue)) { return "Seed must be a positive number"; }
+            if (!IsNumberInRange(tickRate, 10, 100)) { return "Tick rate must be between 10 and 100"; }
+            if (!IsNumberInRange(saveInterval, 60, 3600)) { return "Save interval must be between 60 and 3600 seconds"; }
+
+            RustConfig.Set(server.ID, "server.worldsize", worldSize);
+            RustConfig.Set(server.ID, "server.seed", seed);
+            RustConfig.Set(server.ID, "server.tickrate", tickRate);
+            RustConfig.Set(server.ID, "server.saveinterval", saveInterval);
+            RustConfig.Set(server.ID, "server.description", description ?? string.Empty);
+            RustConfig.Set(server.ID, "server.url", url ?? string.Empty);
+            RustConfig.Set(server.ID, "server.headerimage", headerImage ?? string.Empty);
+
+            // The app port defaults to the highest server port + 67, so only the disabled state is stored
+            if (!rustPlus || RustConfig.Get(server.ID, "app.port") == "-1")
+            {
+                RustConfig.Set(server.ID, "app.port", rustPlus ? (int.Parse(server.Port) + 68).ToString() : "-1");
+            }
+
+            Log(server.ID, "Settings: server.cfg updated");
+            return null;
+        }
+
         private static bool IsNumberInRange(string text, int min, int max)
         {
             return int.TryParse(text, out int value) && value >= min && value <= max;
@@ -1347,35 +1531,10 @@ namespace ToolCupboard
             var server = (ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            string error = null;
-            if (!IsNumberInRange(textBox_SettingWorldSize.Text, 1000, 6000)) { error = "World size must be between 1000 and 6000"; }
-            else if (!IsNumberInRange(textBox_SettingSeed.Text, 0, int.MaxValue)) { error = "Seed must be a positive number"; }
-            else if (!IsNumberInRange(textBox_SettingTickRate.Text, 10, 100)) { error = "Tick rate must be between 10 and 100"; }
-            else if (!IsNumberInRange(textBox_SettingSaveInterval.Text, 60, 3600)) { error = "Save interval must be between 60 and 3600 seconds"; }
+            string error = SaveServerSettings(server, textBox_SettingWorldSize.Text, textBox_SettingSeed.Text, textBox_SettingTickRate.Text, textBox_SettingSaveInterval.Text,
+                textBox_SettingDescription.Text, textBox_SettingUrl.Text, textBox_SettingHeaderImage.Text, checkBox_SettingRustPlus.IsChecked == true);
 
-            if (error != null)
-            {
-                label_SettingsStatus.Content = error;
-                return;
-            }
-
-            RustConfig.Set(server.ID, "server.worldsize", textBox_SettingWorldSize.Text);
-            RustConfig.Set(server.ID, "server.seed", textBox_SettingSeed.Text);
-            RustConfig.Set(server.ID, "server.tickrate", textBox_SettingTickRate.Text);
-            RustConfig.Set(server.ID, "server.saveinterval", textBox_SettingSaveInterval.Text);
-            RustConfig.Set(server.ID, "server.description", textBox_SettingDescription.Text);
-            RustConfig.Set(server.ID, "server.url", textBox_SettingUrl.Text);
-            RustConfig.Set(server.ID, "server.headerimage", textBox_SettingHeaderImage.Text);
-
-            // The app port defaults to the highest server port + 67, so only the disabled state is stored
-            bool rustPlus = checkBox_SettingRustPlus.IsChecked == true;
-            if (!rustPlus || RustConfig.Get(server.ID, "app.port") == "-1")
-            {
-                RustConfig.Set(server.ID, "app.port", rustPlus ? (int.Parse(server.Port) + 68).ToString() : "-1");
-            }
-
-            label_SettingsStatus.Content = "Saved. Changes apply the next time the server starts.";
-            Log(server.ID, "Settings: server.cfg updated");
+            label_SettingsStatus.Content = error ?? "Saved. Changes apply the next time the server starts.";
         }
         #endregion
 
@@ -1581,6 +1740,13 @@ namespace ToolCupboard
             var result = await this.ShowMessageAsync("Mods and Plugins", $"Remove {framework}? Plugins and their configs are kept.{note}", MessageDialogStyle.AffirmativeAndNegative);
             if (result != MessageDialogResult.Affirmative) { return; }
 
+            await RemoveFramework(server);
+            RefreshMods();
+        }
+
+        private async Task RemoveFramework(ServerTable server)
+        {
+            RustModFramework framework = RustMods.Detect(server.ID);
             if (framework == RustModFramework.Carbon)
             {
                 RustMods.RemoveCarbon(server.ID);
@@ -1591,8 +1757,9 @@ namespace ToolCupboard
                 await GameServer_Update(server, validate: true);
             }
 
+            server.Framework = RustMods.Detect(server.ID).ToString();
+            ServerGrid.Items.Refresh();
             Log(server.ID, $"Mods: {framework} removed");
-            RefreshMods();
         }
 
         private void Button_PluginAdd_Click(object sender, RoutedEventArgs e)
@@ -2492,7 +2659,6 @@ namespace ToolCupboard
 
             string extractPath = ServerPath.GetServers(server.ID);
             string restorePath = extractPath + ".restoring";
-            string oldPath = extractPath + ".old";
 
             string error = string.Empty;
             await Task.Run(() =>
@@ -2502,25 +2668,12 @@ namespace ToolCupboard
                     // Keep the current server until the whole backup is unpacked
                     if (Directory.Exists(restorePath)) { Directory.Delete(restorePath, true); }
                     ZipFile.ExtractToDirectory(backupPath, restorePath);
-
-                    if (Directory.Exists(oldPath)) { Directory.Delete(oldPath, true); }
-                    if (Directory.Exists(extractPath)) { Directory.Move(extractPath, oldPath); }
-                    Directory.Move(restorePath, extractPath);
-                    Directory.Delete(oldPath, true);
+                    FolderSwap.Replace(extractPath, restorePath);
                 }
                 catch (Exception e)
                 {
                     error = e.Message;
-
-                    try
-                    {
-                        if (Directory.Exists(restorePath)) { Directory.Delete(restorePath, true); }
-                        if (!Directory.Exists(extractPath) && Directory.Exists(oldPath)) { Directory.Move(oldPath, extractPath); }
-                    }
-                    catch (Exception cleanup)
-                    {
-                        error += $" ({cleanup.Message})";
-                    }
+                    FolderSwap.DeleteIfPossible(restorePath);
                 }
             });
 
