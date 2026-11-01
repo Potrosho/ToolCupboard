@@ -1,0 +1,10 @@
+.vs
+ToolCupboard/bin/
+ToolCupboard/obj/
+ToolCupboard-Plugin-Development/bin/
+ToolCupboard-Plugin-Development/obj/
+ToolCupboard.sln.DotSettings.user
+packages/
+ToolCupboard.Tests/bin/
+ToolCupboard.Tests/obj/
+*.user

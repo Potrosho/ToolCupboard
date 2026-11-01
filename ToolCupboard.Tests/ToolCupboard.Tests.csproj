@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ToolCupboard\Functions\RustConfig.cs" Link="Linked\RustConfig.cs" />
+    <Compile Include="..\ToolCupboard\Functions\RustRcon.cs" Link="Linked\RustRcon.cs" />
+    <Compile Include="..\ToolCupboard\Functions\RustWipe.cs" Link="Linked\RustWipe.cs" />
+    <Compile Include="..\ToolCupboard\Functions\UdpClientHandler.cs" Link="Linked\UdpClientHandler.cs" />
+    <Compile Include="..\ToolCupboard\GameServer\Query\A2S.cs" Link="Linked\A2S.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NCrontab.Signed" Version="3.4.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>
