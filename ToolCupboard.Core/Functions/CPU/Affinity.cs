@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ToolCupboard.Functions.CPU
 {
-    static class Affinity
+    public static class Affinity
     {
         public static string GetAffinityValidatedString(string bits)
         {

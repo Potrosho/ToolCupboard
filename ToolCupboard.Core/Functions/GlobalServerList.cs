@@ -3,7 +3,7 @@ using System.Net;
 
 namespace ToolCupboard.Functions
 {
-    static class GlobalServerList
+    public static class GlobalServerList
     {
         public static bool IsServerOnSteamServerList(string publicIP, string port)
         {

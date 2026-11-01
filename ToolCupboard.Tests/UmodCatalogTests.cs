@@ -11,7 +11,7 @@ namespace ToolCupboard.Tests
         [Fact]
         public void WritePlugin_WorksOnAFreshServerAndReplacesADisabledCopy()
         {
-            ServerPath.Root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rustgsm-tests-" + System.Guid.NewGuid().ToString("N"));
+            AppInfo.RootPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "rustgsm-tests-" + System.Guid.NewGuid().ToString("N"));
             try
             {
                 RustMods.WritePlugin("1", RustModFramework.Oxide, "Kits", Encoding.UTF8.GetBytes("first"));
@@ -25,7 +25,7 @@ namespace ToolCupboard.Tests
             }
             finally
             {
-                System.IO.Directory.Delete(ServerPath.Root, true);
+                System.IO.Directory.Delete(AppInfo.RootPath, true);
             }
         }
 

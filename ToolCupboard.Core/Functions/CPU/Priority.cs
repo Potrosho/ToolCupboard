@@ -2,7 +2,7 @@
 
 namespace ToolCupboard.Functions.CPU
 {
-    static class Priority
+    public static class Priority
     {
         public static int GetPriorityInteger(string priority)
         {

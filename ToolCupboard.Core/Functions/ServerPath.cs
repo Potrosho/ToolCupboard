@@ -45,7 +45,7 @@ namespace ToolCupboard.Functions
         /// <returns></returns>
         public static string Get(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.APP_PATH, path1, path2, path3);
+            return Path.Combine(AppInfo.RootPath, path1, path2, path3);
         }
 
         /// <summary>
@@ -61,7 +61,7 @@ namespace ToolCupboard.Functions
                 return backupConfig.BackupLocation;
             }
 
-            string defaultBackupPath = Path.Combine(MainWindow.APP_PATH, FolderName.Backups, serverId);
+            string defaultBackupPath = Path.Combine(AppInfo.RootPath, FolderName.Backups, serverId);
             Directory.CreateDirectory(defaultBackupPath);
             return defaultBackupPath;
         }
@@ -75,12 +75,12 @@ namespace ToolCupboard.Functions
         /// <returns></returns>
         public static string GetBin(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.APP_PATH, FolderName.Bin, path1, path2, path3);
+            return Path.Combine(AppInfo.RootPath, FolderName.Bin, path1, path2, path3);
         }
 
         public static string GetInstaller(string path = "") // Unused
         {
-            return Path.Combine(MainWindow.APP_PATH, FolderName.Installer, path);
+            return Path.Combine(AppInfo.RootPath, FolderName.Installer, path);
         }
 
         /// <summary>
@@ -92,7 +92,7 @@ namespace ToolCupboard.Functions
         /// <returns></returns>
         public static string GetLogs(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.APP_PATH, FolderName.Logs, path1, path2, path3);
+            return Path.Combine(AppInfo.RootPath, FolderName.Logs, path1, path2, path3);
         }
 
         /// <summary>
@@ -104,7 +104,7 @@ namespace ToolCupboard.Functions
         /// <returns></returns>
         public static string GetServers(string serverId, string path1 = "", string path2 = "")
         {
-            return Path.Combine(MainWindow.APP_PATH, FolderName.Servers, serverId, path1, path2);
+            return Path.Combine(AppInfo.RootPath, FolderName.Servers, serverId, path1, path2);
         }
 
         /// <summary>

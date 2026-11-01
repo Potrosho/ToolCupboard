@@ -8,3 +8,5 @@ packages/
 ToolCupboard.Tests/bin/
 ToolCupboard.Tests/obj/
 *.user
+ToolCupboard.Core/bin/
+ToolCupboard.Core/obj/

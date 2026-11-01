@@ -5,19 +5,6 @@ using NCrontab;
 using ToolCupboard.Functions;
 using Xunit;
 
-namespace ToolCupboard.Functions
-{
-    // Stands in for the app's ServerPath, which depends on the main window
-    public static class ServerPath
-    {
-        public static string Root;
-
-        public static string GetServers(string serverId) => Path.Combine(Root, "servers", serverId);
-
-        public static string GetServersServerFiles(string serverId, string path1 = "", string path2 = "", string path3 = "") => Path.Combine(GetServers(serverId), "serverfiles", path1, path2, path3);
-    }
-}
-
 namespace ToolCupboard.Tests
 {
     [Collection("ServerPath")]
@@ -33,7 +20,7 @@ namespace ToolCupboard.Tests
 
         public RustServerFilesTests()
         {
-            ServerPath.Root = Path.Combine(Path.GetTempPath(), "rustgsm-tests-" + Guid.NewGuid().ToString("N"));
+            AppInfo.RootPath = Path.Combine(Path.GetTempPath(), "rustgsm-tests-" + Guid.NewGuid().ToString("N"));
             _data = Path.Combine(ServerPath.GetServersServerFiles(SERVER_ID, "server"), "test");
             Directory.CreateDirectory(Path.Combine(_data, "cfg"));
 
@@ -52,7 +39,7 @@ namespace ToolCupboard.Tests
 
         public void Dispose()
         {
-            Directory.Delete(ServerPath.Root, true);
+            Directory.Delete(AppInfo.RootPath, true);
         }
 
         [Fact]
@@ -154,6 +141,17 @@ namespace ToolCupboard.Tests
             File.WriteAllText(ConfigPath, "+rcon.port 28016\r\n");
 
             Assert.Null(RustRcon.ReadSettings(SERVER_ID));
+        }
+
+        [Theory]
+        [InlineData(new string[0], "28015")]
+        [InlineData(new[] { "28015" }, "28018")]
+        [InlineData(new[] { "28018", "28015" }, "28021")]
+        [InlineData(new[] { "28016" }, "28015")]
+        [InlineData(new[] { "", "not a port" }, "28015")]
+        public void AvailablePort_SkipsPortsAlreadyInUse(string[] used, string expected)
+        {
+            Assert.Equal(expected, new ServerConfig(null).GetAvailablePort("28015", 3, used));
         }
 
         [Fact]

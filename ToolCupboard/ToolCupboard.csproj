@@ -27,8 +27,10 @@
     <PackageReference Include="LiveCharts.Wpf.Core" Version="0.9.8" />
     <PackageReference Include="MahApps.Metro" Version="2.4.11" />
     <PackageReference Include="NCrontab.Signed" Version="3.4.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="System.Management" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ToolCupboard.Core\ToolCupboard.Core.csproj" />
   </ItemGroup>
 
 </Project>

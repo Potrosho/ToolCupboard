@@ -5,7 +5,7 @@ using System.Management;
 
 namespace ToolCupboard.Functions
 {
-    class SystemMetrics
+    public class SystemMetrics
     {
         public string CPUType { get; private set; }
         public int CPUCoreCount { get; private set; }

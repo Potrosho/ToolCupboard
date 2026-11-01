@@ -14,7 +14,7 @@ namespace ToolCupboard.GameServer
     /// Just use the traditional method to handle the server.
     ///
     /// </summary>
-    class RUST
+    public class RUST
     {
         private readonly Functions.ServerConfig _serverData;
 

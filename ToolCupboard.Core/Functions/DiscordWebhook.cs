@@ -9,7 +9,7 @@ using System.Linq;
 
 namespace ToolCupboard.Functions
 {
-    class DiscordWebhook 
+    public class DiscordWebhook 
     {
         public const string LogoUrl = "https://raw.githubusercontent.com/Potrosho/ToolCupboard/main/ToolCupboard/Images/ToolCupboard.png";
 
@@ -61,7 +61,7 @@ namespace ToolCupboard.Functions
                         ""icon_url"": """ + LogoUrl + @"""
                     },
                     ""footer"": {
-                        ""text"": """ + MainWindow.APP_VERSION + @" - Discord Alert"",
+                        ""text"": """ + AppInfo.Version + @" - Discord Alert"",
                         ""icon_url"": """ + avatarUrl + @"""
                     },
                     ""timestamp"": """ + DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.mssZ") + @"""

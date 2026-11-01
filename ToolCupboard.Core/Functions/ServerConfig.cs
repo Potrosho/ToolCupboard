@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 
@@ -84,12 +86,12 @@ namespace ToolCupboard.Functions
             //Get next available ServerID
             if (string.IsNullOrEmpty(serverid))
             {
-                for (int id = 1; id <= MainWindow.MAX_SERVER; id++)
+                for (int id = 1; id <= AppInfo.MaxServers; id++)
                 {
-                    string serverid_dir = MainWindow.APP_PATH + @"\servers\" + id;
+                    string serverid_dir = AppInfo.RootPath + @"\servers\" + id;
                     if (Directory.Exists(serverid_dir))
                     {
-                        string config = MainWindow.APP_PATH + @"\servers\" + id + @"\configs\ToolCupboard.cfg";
+                        string config = AppInfo.RootPath + @"\servers\" + id + @"\configs\ToolCupboard.cfg";
                         if (!File.Exists(config))
                         {
                             ServerID = id.ToString();
@@ -160,12 +162,12 @@ namespace ToolCupboard.Functions
             }
         }
 
-        public void SetData(string serverGame, string serverName, dynamic gameServer)
+        public void SetData(string serverGame, string serverName, dynamic gameServer, IEnumerable<string> usedPorts)
         {
             ServerGame = serverGame;
             ServerName = serverName;
             ServerIP = GetIPAddress();
-            ServerPort = GetAvailablePort(gameServer.Port, gameServer.PortIncrements);
+            ServerPort = GetAvailablePort((string)gameServer.Port, (int)gameServer.PortIncrements, usedPorts);
             ServerQueryPort = (int.Parse(ServerPort) - int.Parse(gameServer.Port) + int.Parse(gameServer.QueryPort)).ToString(); // Magic
             ServerMap = gameServer.Defaultmap;
             ServerMaxPlayer = gameServer.Maxplayers;
@@ -282,24 +284,12 @@ namespace ToolCupboard.Functions
             }
         }
 
-        public string GetAvailablePort(string defaultport, int increment)
+        public string GetAvailablePort(string defaultport, int increment, IEnumerable<string> usedPorts)
         {
-            MainWindow ToolCupboard = (MainWindow)System.Windows.Application.Current.MainWindow;
-
-            int[] portlist = new int[ToolCupboard.ServerGrid.Items.Count];
-
-            for (int i = 0; i < ToolCupboard.ServerGrid.Items.Count; i++)
-            {
-                ServerTable row = ToolCupboard.ServerGrid.Items[i] as ServerTable;
-                portlist[i] = int.Parse(string.IsNullOrWhiteSpace(row.Port) ? "0" : row.Port);
-            }
-
-            Array.Sort(portlist);
-
             int port = int.Parse(defaultport);
-            for (int i = 0; i < ToolCupboard.ServerGrid.Items.Count; i++)
+            foreach (int used in usedPorts.Select(p => int.TryParse(p, out int value) ? value : 0).OrderBy(p => p))
             {
-                if (port == portlist[i] || port == 27020) //SourceTV port 27020
+                if (port == used || port == 27020) //SourceTV port 27020
                 {
                     port += increment;
                 }

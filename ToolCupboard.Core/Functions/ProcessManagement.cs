@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace ToolCupboard.Functions
 {
-    static class ProcessManagement
+    public static class ProcessManagement
     {
         // Opens a url, folder or document with its default handler
         public static void OpenShell(string target)

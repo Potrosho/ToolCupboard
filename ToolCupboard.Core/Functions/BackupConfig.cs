@@ -8,11 +8,11 @@ using System.Threading.Tasks;
 
 namespace ToolCupboard.Functions
 {
-    class BackupConfig
+    public class BackupConfig
     {
         private const int DefaultMaximumBackups = 3;
 
-        static class SettingName
+        public static class SettingName
         {
             public const string BackupLocation = "backuplocation";
             public const string MaximumBackups = "maximumbackups";
@@ -28,7 +28,7 @@ namespace ToolCupboard.Functions
             string configPath = ServerPath.GetServersConfigs(_serverId, "BackupConfig.cfg");
             if (!File.Exists(configPath))
             {
-                File.WriteAllText(configPath, $"{SettingName.BackupLocation}=\"{Path.Combine(MainWindow.APP_PATH, "Backups", serverId)}\"{Environment.NewLine}{SettingName.MaximumBackups}=\"{DefaultMaximumBackups}\"");
+                File.WriteAllText(configPath, $"{SettingName.BackupLocation}=\"{Path.Combine(AppInfo.RootPath, "Backups", serverId)}\"{Environment.NewLine}{SettingName.MaximumBackups}=\"{DefaultMaximumBackups}\"");
             }
 
             LoadConfig();

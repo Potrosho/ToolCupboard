@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
@@ -16,6 +15,12 @@ namespace ToolCupboard.Functions
         private const int WM_CHAR = 0x0102;
 
         private const int MAX_LINE = 150;
+        private const int KEY_NONE = 0x00;
+        private const int KEY_ENTER = 0x0D;
+
+        /// <summary>Raised with the server id and a line of output from a process it owns.</summary>
+        public static event Action<string, string> OutputReceived;
+
         private readonly List<string> _consoleList = new List<string>();
         private readonly string _serverId;
         private int _lineNumber = 0;
@@ -30,12 +35,9 @@ namespace ToolCupboard.Functions
             _serverId = serverId.ToString();
         }
 
-        public async void AddOutput(object sender, DataReceivedEventArgs args)
+        public void AddOutput(object sender, DataReceivedEventArgs args)
         {
-            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-            {
-                MainWindow._serverMetadata[int.Parse(_serverId)].ServerConsole.Add(args.Data);
-            });
+            OutputReceived?.Invoke(_serverId, args.Data);
         }
 
         public async void Input(Process process, string text, IntPtr mainWindow)
@@ -125,14 +127,14 @@ namespace ToolCupboard.Functions
                 if (i > 0 && message[i] == message[i-1])
                 {
                     // Send a None key, break the repeat bug
-                    PostMessage(hWnd, WM_KEYDOWN, (IntPtr)Keys.None, (IntPtr)0);
+                    PostMessage(hWnd, WM_KEYDOWN, (IntPtr)KEY_NONE, (IntPtr)0);
                 }
 
                 PostMessage(hWnd, WM_CHAR, (IntPtr)message[i], (IntPtr)0);
             }
 
             // Send enter
-            PostMessage(hWnd, WM_KEYDOWN, (IntPtr)Keys.Enter, (IntPtr)(0 << 29 | 0));
+            PostMessage(hWnd, WM_KEYDOWN, (IntPtr)KEY_ENTER, (IntPtr)(0 << 29 | 0));
         }
 
     }

@@ -2,7 +2,7 @@
 
 namespace ToolCupboard.GameServer.Data
 {
-    static class Class
+    public static class Class
     {
         public static dynamic Get(string serverGame, ServerConfig serverData = null)
         {

@@ -124,9 +124,9 @@ namespace ToolCupboard
             Deleting = 12
         }
 
-        public static readonly string APP_VERSION = "v" + string.Concat(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString().Reverse().Skip(2).Reverse());
-        public static readonly int MAX_SERVER = 50;
-        public static readonly string APP_PATH = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
+        public static readonly string APP_VERSION = AppInfo.Version;
+        public static readonly int MAX_SERVER = AppInfo.MaxServers;
+        public static readonly string APP_PATH = AppInfo.RootPath;
         public static readonly string DEFAULT_THEME = "Cyan";
 
         private readonly NotifyIcon notifyIcon;
@@ -342,6 +342,8 @@ namespace ToolCupboard
             }
 
             AutoStartServer();
+
+            ServerConsole.OutputReceived += (serverId, line) => Dispatcher.Invoke(() => _serverMetadata[int.Parse(serverId)].ServerConsole.Add(line));
 
             StartConsoleRefresh();
 
@@ -886,6 +888,8 @@ namespace ToolCupboard
             }
         }
 
+        private List<string> UsedPorts() => ServerGrid.Items.Cast<ServerTable>().Select(server => server.Port).ToList();
+
         // Shared by the install panel and the web UI. Returns null when installed, otherwise the reason it failed
         private async Task<string> InstallServer(string servername, Action<string> onLine)
         {
@@ -941,10 +945,10 @@ namespace ToolCupboard
             }
 
             newServerConfig.ServerIP = newServerConfig.GetIPAddress();
-            newServerConfig.ServerPort = newServerConfig.GetAvailablePort(gameServer.Port, gameServer.PortIncrements);
+            newServerConfig.ServerPort = newServerConfig.GetAvailablePort((string)gameServer.Port, (int)gameServer.PortIncrements, UsedPorts());
 
             // Create ToolCupboard.cfg
-            newServerConfig.SetData(servergame, servername, gameServer);
+            newServerConfig.SetData(servergame, servername, gameServer, UsedPorts());
             newServerConfig.CreateToolCupboardConfig();
 
             // Create ToolCupboard.cfg and game server config
@@ -1063,7 +1067,7 @@ namespace ToolCupboard
             }
 
             // Create ToolCupboard.cfg
-            newServerConfig.SetData(servergame, servername, gameServer);
+            newServerConfig.SetData(servergame, servername, gameServer, UsedPorts());
             newServerConfig.CreateToolCupboardConfig();
 
             LoadServerTable();

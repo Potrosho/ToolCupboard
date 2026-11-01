@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 
 namespace ToolCupboard
 {
-    class WindowsFirewall
+    public class WindowsFirewall
     {
         private readonly string Name;
         private readonly string Path;

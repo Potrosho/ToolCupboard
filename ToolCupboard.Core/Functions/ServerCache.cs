@@ -3,7 +3,7 @@ using System.IO;
 
 namespace ToolCupboard.Functions
 {
-    static class ServerCache
+    public static class ServerCache
     {
         public static int GetPID(string serverId)
         {
