@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <Resource Include="Images\**\*.png;Images\**\*.ico" />
+    <EmbeddedResource Include="Web\index.html" LogicalName="ToolCupboard.Web.index.html" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>

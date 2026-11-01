@@ -24,6 +24,7 @@ namespace ToolCupboard.Functions
         public DateTime Modified { get; set; }
 
         public string Status => Enabled ? "Enabled" : "Disabled";
+        public string ConfigText => HasConfig ? "Yes" : "No";
         public string ModifiedText => Modified.ToString("yyyy-MM-dd HH:mm");
     }
 
@@ -168,6 +169,16 @@ namespace ToolCupboard.Functions
             string pluginsPath = GetPluginsPath(serverId, framework);
             Directory.CreateDirectory(pluginsPath);
             File.Copy(sourcePath, Path.Combine(pluginsPath, Path.GetFileName(sourcePath)), true);
+        }
+
+        public static void WritePlugin(string serverId, RustModFramework framework, string name, byte[] content)
+        {
+            string pluginsPath = GetPluginsPath(serverId, framework);
+            Directory.CreateDirectory(pluginsPath);
+            string disabledCopy = Path.Combine(pluginsPath, DISABLED_FOLDER, $"{name}.cs");
+            if (File.Exists(disabledCopy)) { File.Delete(disabledCopy); }
+
+            File.WriteAllBytes(Path.Combine(pluginsPath, $"{name}.cs"), content);
         }
 
         public static void SetEnabled(string serverId, RustModFramework framework, RustPlugin plugin, bool enabled)

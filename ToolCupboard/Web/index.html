@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Run your Rust servers, console and players from this PC.">
+<title>ToolCupboard</title>
+<style>
+/* Hallmark | redesign: full, app screen | theme: kiln, deal: manual (Node not installed) | genre: atmospheric | screen: server console | signature: the live console, an ember glow while the server runs | fonts: system faces, the page must work offline | sloplint: not run */
+/* Hallmark · pre-emit critique: P5 H4 E4 S4 R5 V4 · weakest: H, no hero on an app screen; the console leads instead of a wide table */
+:root {
+  --color-paper: oklch(13% 0.012 40);
+  --color-paper-2: oklch(17.5% 0.016 40);
+  --color-paper-3: oklch(22% 0.018 40);
+  --color-ink: oklch(94% 0.02 80);
+  --color-muted: oklch(72% 0.03 60);
+  --color-rule: oklch(96% 0.01 80 / 0.12);
+  --color-accent: oklch(58% 0.19 33);
+  --color-accent-ink: oklch(98% 0.01 80);
+  --color-focus: oklch(76% 0.19 56);
+  --color-well: oklch(10% 0.01 40);
+  --color-live: oklch(76% 0.19 56);
+  --color-busy: oklch(89% 0.14 78);
+  --color-danger: oklch(72% 0.17 30);
+  --color-brand: oklch(52% 0.17 32);
+  --color-brand-dark: oklch(39% 0.13 30);
+  --color-brand-light: oklch(94% 0.02 80);
+  --heat-low: oklch(40% 0.16 27 / 0.28);
+  --heat-none: oklch(40% 0.16 27 / 0);
+  --font-display: "Iowan Old Style", Georgia, "Times New Roman", serif;
+  --font-body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --radius-well: 12px;
+  --radius-control: 8px;
+  --dur-micro: 120ms;
+  --dur-short: 240ms;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; overflow-x: clip; background: var(--color-paper); color: var(--color-ink); font: 16px/1.5 var(--font-body); }
+::selection { background: var(--color-accent); color: var(--color-accent-ink); }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+button { min-height: 38px; padding: 0 14px; border: 1px solid var(--color-rule); border-radius: var(--radius-control); background: transparent; cursor: pointer; transition: background-color var(--dur-micro), border-color var(--dur-micro); }
+button:hover:not(:disabled) { background: var(--color-paper-3); }
+button:active:not(:disabled) { background: var(--color-paper-2); }
+button:disabled { opacity: .55; cursor: not-allowed; }
+button.primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--color-brand); }
+button.primary:active:not(:disabled) { background: var(--color-brand-dark); }
+button.danger { color: var(--color-danger); }
+input { width: 100%; min-height: 38px; padding: 0 12px; border: 1px solid var(--color-rule); border-radius: var(--radius-control); background: var(--color-well); }
+input:focus-visible { outline-offset: -2px; }
+input:disabled { opacity: .55; cursor: not-allowed; }
+input::placeholder { color: var(--color-muted); }
+
+.bar { display: flex; align-items: center; gap: 10px; max-width: 1360px; min-height: 60px; margin: 0 auto; padding: 0 24px; }
+.bar svg { width: 30px; height: 30px; flex: none; }
+.bar strong { font: 600 20px/1 var(--font-display); }
+.mark-body { fill: var(--color-brand); }
+.mark-door { fill: var(--color-brand-light); }
+.mark-line { fill: var(--color-brand-dark); }
+#connection { margin-left: auto; color: var(--color-muted); font-size: 14px; }
+
+main { max-width: 1360px; margin: 0 auto; padding: 8px 24px 28px; display: grid; gap: 18px; }
+.heading { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.heading > div:first-child { flex: 1 1 280px; min-width: 0; }
+h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-word; min-width: 0; }
+#state { margin: 2px 0 0; color: var(--color-muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.facts { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr)); gap: 12px 24px; margin: 0; padding: 12px 0; border-block: 1px solid var(--color-rule); }
+.facts dt { color: var(--color-muted); font-size: 14px; }
+.facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.address { display: flex; align-items: center; gap: 10px; }
+.address button { min-height: 28px; padding: 0 8px; font-size: 14px; font-weight: 400; }
+
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+section { min-width: 0; }
+h2 { margin: 0 0 6px; font: 600 15px/1.4 var(--font-body); }
+.well { position: relative; overflow: hidden; border: 1px solid var(--color-rule); border-radius: var(--radius-well); background: var(--color-well); }
+.well::after { content: ""; position: absolute; inset: auto 0 56px; height: 120px; background: linear-gradient(to top, var(--heat-low), var(--heat-none)); opacity: 0; pointer-events: none; transition: opacity var(--dur-short); }
+.well[data-live="true"]::after { opacity: 1; }
+#console { height: 58vh; min-height: 320px; margin: 0; padding: 14px 16px; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; font: 14px/1.55 var(--font-mono); }
+form.command { position: relative; z-index: 1; display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--color-rule); background: var(--color-paper-2); }
+form.command input { font-family: var(--font-mono); }
+aside { display: grid; gap: 22px; min-width: 0; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 400; font-size: 14px; color: var(--color-muted); }
+th, td { padding: 8px 6px; border-bottom: 1px solid var(--color-rule); }
+td { overflow-wrap: anywhere; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#servers tbody tr { cursor: pointer; }
+#servers tbody tr:hover { background: var(--color-paper-2); }
+#servers tbody tr[aria-selected="true"] { background: var(--color-paper-3); }
+#servers tbody tr[aria-selected="true"] td:first-child { font-weight: 600; }
+.state-Started { color: var(--color-live); }
+.state-Stopped { color: var(--color-muted); }
+.state-busy { color: var(--color-busy); }
+.note { margin: 0; padding: 10px 6px; color: var(--color-muted); }
+.tabs { display: flex; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid var(--color-rule); }
+.tabs button { min-height: 38px; border: 0; border-radius: var(--radius-control) var(--radius-control) 0 0; color: var(--color-muted); }
+.tabs button[aria-selected="true"] { color: var(--color-ink); background: var(--color-paper-3); font-weight: 600; }
+#plugins-view { display: grid; gap: 22px; padding: 16px; border: 1px solid var(--color-rule); border-radius: var(--radius-well); background: var(--color-paper-2); }
+form.search { display: flex; gap: 8px; margin-bottom: 6px; }
+.plugin-row td { vertical-align: top; }
+.plugin-title { font-weight: 600; }
+.plugin-title a { color: inherit; }
+.plugin-title a:hover { color: var(--color-focus); }
+.plugin-detail { display: block; margin-top: 2px; color: var(--color-muted); font-size: 14px; }
+.plugin-warning { display: block; margin-top: 2px; color: var(--color-busy); font-size: 14px; }
+.row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.row-actions button { min-height: 30px; padding: 0 10px; font-size: 14px; white-space: nowrap; }
+.plugin-row td:last-child { width: 1%; white-space: nowrap; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; color: var(--color-muted); font-size: 14px; }
+.pager button { min-height: 30px; padding: 0 10px; font-size: 14px; }
+.framework-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.framework-setup p { flex: 1 1 240px; margin: 0; color: var(--color-muted); }
+td.player-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 0; }
+td.player-actions button { min-height: 30px; padding: 0 10px; font-size: 14px; }
+tr.player td { border-bottom: 0; padding-bottom: 4px; }
+tr.player-controls td { border-bottom: 1px solid var(--color-rule); }
+
+dialog { width: min(420px, calc(100% - 32px)); padding: 20px; border: 1px solid var(--color-rule); border-radius: var(--radius-well); background: var(--color-paper-2); color: var(--color-ink); }
+dialog::backdrop { background: var(--color-well); opacity: .7; }
+dialog h2 { font: 600 22px/1.2 var(--font-display); }
+dialog p { margin: 0 0 14px; color: var(--color-muted); overflow-wrap: anywhere; }
+dialog label { display: block; margin-bottom: 14px; }
+dialog .actions { justify-content: flex-end; }
+
+@media (max-width: 60rem) {
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facts div:first-child { grid-column: 1 / -1; }
+  .row-actions { justify-content: flex-start; }
+  #console { height: 44vh; }
+  h1 { font-size: 28px; }
+  button { min-height: 44px; }
+  .bar, main { padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <svg viewBox="0 0 100 100" aria-hidden="true">
+    <rect class="mark-body" width="100" height="100" rx="18"/>
+    <rect class="mark-door" x="22" y="17" width="56" height="60" rx="5"/>
+    <rect class="mark-line" x="48.5" y="21" width="3" height="52"/>
+    <rect class="mark-line" x="41.5" y="46" width="4" height="12" rx="1.5"/>
+    <rect class="mark-line" x="54.5" y="46" width="4" height="12" rx="1.5"/>
+    <rect class="mark-door" x="28" y="77" width="8" height="7"/>
+    <rect class="mark-door" x="64" y="77" width="8" height="7"/>
+  </svg>
+  <strong>ToolCupboard</strong>
+  <span id="connection" role="status">Connecting</span>
+</header>
+<main>
+  <noscript><p class="note">The dashboard needs JavaScript.</p></noscript>
+  <div class="heading">
+    <div>
+      <h1 id="title">Select a server</h1>
+      <p id="state"></p>
+    </div>
+    <div class="actions">
+      <button id="start" class="primary" disabled>Start</button>
+      <button id="stop" disabled>Stop</button>
+      <button id="restart" disabled>Restart</button>
+      <button id="update" disabled>Update</button>
+      <button id="backup" disabled>Backup</button>
+    </div>
+  </div>
+  <dl class="facts">
+    <div><dt>Address</dt><dd class="address"><span id="fact-address">None</span><button id="copy-address" type="button" disabled>Copy</button></dd></div>
+    <div><dt>Framework</dt><dd id="fact-framework">None</dd></div>
+    <div><dt>Map</dt><dd id="fact-map">None</dd></div>
+    <div><dt>Players</dt><dd id="fact-players">None</dd></div>
+    <div><dt>Uptime</dt><dd id="fact-uptime">None</dd></div>
+  </dl>
+  <div class="workspace">
+    <section aria-label="Server workspace">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-console" aria-selected="true" aria-controls="console-view">Console</button>
+        <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
+      </div>
+      <div class="well" id="console-well">
+        <pre id="console" tabindex="0" aria-live="off"></pre>
+        <form class="command" id="command">
+          <input id="command-text" aria-label="Server command" placeholder="Start the server to send commands" autocomplete="off" disabled>
+          <button id="command-send" disabled>Send</button>
+        </form>
+      </div>
+      <div id="plugins-view" role="tabpanel" hidden>
+        <div class="framework-setup" id="framework-setup" hidden>
+          <p>Plugins need Oxide or Carbon. Stop the server, then install one.</p>
+          <button id="install-oxide" type="button">Install Oxide</button>
+          <button id="install-carbon" type="button">Install Carbon</button>
+        </div>
+        <div>
+          <h2>Installed</h2>
+          <table id="installed" hidden>
+            <thead><tr><th scope="col">Plugin</th><th scope="col"><span hidden>Actions</span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="note" id="installed-note">No plugins installed</p>
+        </div>
+        <div>
+          <h2>Find plugins on uMod</h2>
+          <form class="search" id="search">
+            <input id="search-text" aria-label="Search uMod plugins" placeholder="Search by name or feature" autocomplete="off">
+            <button id="search-send">Search</button>
+          </form>
+          <table id="results" hidden>
+            <tbody></tbody>
+          </table>
+          <p class="note" id="results-note">Search to see the most downloaded Rust plugins</p>
+          <div class="pager" id="pager" hidden>
+            <button id="page-prev" type="button">Previous</button>
+            <span id="page-text"></span>
+            <button id="page-next" type="button">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+    <aside>
+      <section aria-labelledby="servers-title">
+        <h2 id="servers-title">Servers</h2>
+        <table id="servers">
+          <thead><tr><th scope="col">Name</th><th scope="col">Status</th><th scope="col" class="num">Players</th></tr></thead>
+          <tbody><tr><td colspan="3" class="note">Loading servers</td></tr></tbody>
+        </table>
+      </section>
+      <section aria-labelledby="players-title">
+        <h2 id="players-title">Players</h2>
+        <table id="players" hidden>
+          <thead><tr><th scope="col">Name</th><th scope="col" class="num">Ping</th><th scope="col" class="num">Online</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note" id="players-note">Select a running server</p>
+      </section>
+    </aside>
+  </div>
+</main>
+<dialog id="confirm">
+  <form method="dialog">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <label id="confirm-reason-label">Reason (shown to the player)<input id="confirm-reason" maxlength="200" autocomplete="off"></label>
+    <div class="actions">
+      <button value="cancel">Cancel</button>
+      <button value="ok" id="confirm-ok" class="primary">Confirm</button>
+    </div>
+  </form>
+</dialog>
+<script>
+const $ = id => document.getElementById(id);
+const hashToken = new URLSearchParams(location.hash.slice(1)).get('token');
+if (hashToken) { sessionStorage.setItem('token', hashToken); }
+const token = sessionStorage.getItem('token');
+let selected = new URLSearchParams(location.search).get('server');
+history.replaceState(null, '', location.pathname + location.search);
+
+async function api(path, options = {}) {
+  const response = await fetch(`/api/${path}`, {
+    ...options,
+    headers: { 'X-ToolCupboard-Token': token || '', 'Content-Type': 'application/json' }
+  });
+  if (response.status === 401) { throw new Error('auth'); }
+  if (!response.ok) { return null; }
+  const text = await response.text();
+  return text ? JSON.parse(text) : true;
+}
+
+// Text only changes when its value does, so polling never clears a selection
+function setText(element, text) {
+  const value = String(text ?? '');
+  if (element.textContent !== value) { element.textContent = value; }
+}
+
+function hasSelectionIn(element) {
+  const selection = getSelection();
+  return !selection.isCollapsed && element.contains(selection.anchorNode);
+}
+
+function statusClass(status) {
+  return status === 'Started' ? 'state-Started' : status === 'Stopped' ? 'state-Stopped' : 'state-busy';
+}
+
+function confirmAction(title, text, wantsReason) {
+  return new Promise(resolve => {
+    const dialog = $('confirm');
+    $('confirm-title').textContent = title;
+    $('confirm-text').textContent = text;
+    $('confirm-reason-label').hidden = !wantsReason;
+    $('confirm-reason').value = '';
+    dialog.returnValue = 'cancel';
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok' ? $('confirm-reason').value : null), { once: true });
+    dialog.showModal();
+  });
+}
+
+let servers = [];
+const current = () => servers.find(server => server.id === selected);
+const serverRows = new Map();
+
+function createServerRow(server) {
+  const row = document.createElement('tr');
+  row.tabIndex = 0;
+  row.onclick = () => { if (getSelection().isCollapsed) { select(server.id); } };
+  row.onkeydown = event => { if (event.key === 'Enter') { select(server.id); } };
+  row.insertCell(); row.insertCell();
+  row.insertCell().className = 'num';
+  return row;
+}
+
+function renderServers() {
+  const body = $('servers').tBodies[0];
+  body.querySelector('.note')?.closest('tr').remove();
+
+  for (const [id, row] of serverRows) {
+    if (!servers.some(server => server.id === id)) { row.remove(); serverRows.delete(id); }
+  }
+  for (const server of servers) {
+    if (!serverRows.has(server.id)) {
+      serverRows.set(server.id, createServerRow(server));
+      body.append(serverRows.get(server.id));
+    }
+    const row = serverRows.get(server.id);
+    row.setAttribute('aria-selected', String(server.id === selected));
+    setText(row.cells[0], server.name);
+    setText(row.cells[1], server.status);
+    row.cells[1].className = statusClass(server.status);
+    setText(row.cells[2], server.players);
+  }
+  if (!servers.length) {
+    const td = body.insertRow().insertCell();
+    td.colSpan = 3; td.className = 'note';
+    td.textContent = 'No servers yet. Install one from the ToolCupboard window.';
+  }
+  renderSelected();
+}
+
+function renderSelected() {
+  const server = current();
+  const status = server?.status;
+  const running = status === 'Started';
+  setText($('title'), server ? server.name : 'Select a server');
+  setText($('state'), status || '');
+  $('state').className = status ? statusClass(status) : '';
+  setText($('fact-address'), server ? `${server.ip}:${server.port}` : 'None');
+  setText($('fact-framework'), server?.framework || 'None');
+  setText($('fact-map'), server?.map || 'None');
+  setText($('fact-players'), server?.players || 'None');
+  setText($('fact-uptime'), server?.uptime || 'None');
+  $('copy-address').disabled = !server;
+  $('start').disabled = status !== 'Stopped';
+  $('update').disabled = status !== 'Stopped';
+  $('backup').disabled = status !== 'Stopped';
+  $('stop').disabled = !running;
+  $('restart').disabled = !running;
+  $('command-text').disabled = !running;
+  $('command-send').disabled = !running;
+  $('command-text').placeholder = running ? 'Type a server command' : 'Start the server to send commands';
+  $('console-well').dataset.live = String(running);
+  $('framework-setup').hidden = !server || server.framework !== 'None';
+  $('install-oxide').disabled = status !== 'Stopped';
+  $('install-carbon').disabled = status !== 'Stopped';
+}
+
+function select(id) {
+  selected = id;
+  const params = new URLSearchParams(location.search);
+  params.set('server', id);
+  history.replaceState(null, '', `?${params}`);
+  $('console').textContent = '';
+  renderServers();
+  if (view === 'plugins') { refreshInstalled(); }
+  refreshDetails();
+}
+
+async function refreshServers() {
+  try {
+    servers = await api('servers') || [];
+    if (!selected && servers.length) { selected = servers[0].id; }
+    renderServers();
+    setText($('connection'), 'Connected');
+  } catch (error) {
+    setText($('connection'), error.message === 'auth' ? 'Open this page from the ToolCupboard window' : 'The app is not responding');
+  }
+}
+
+async function refreshConsole() {
+  if (!selected) { return; }
+  const lines = await api(`servers/${selected}/console`).catch(() => null);
+  const view = $('console');
+  if (!lines || hasSelectionIn(view)) { return; }
+  const atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 4;
+  const text = lines.join('\n');
+  if (text !== view.textContent) {
+    view.textContent = text;
+    if (atBottom) { view.scrollTop = view.scrollHeight; }
+  }
+}
+
+const playerRows = new Map();
+
+async function playerAction(action, label, player) {
+  const reason = await confirmAction(`${label} player`, `${label} ${player.displayName}?`, true);
+  if (reason === null) { return; }
+  await api(`servers/${selected}/players/${player.steamID}/${action}`, { method: 'POST', body: JSON.stringify({ text: reason }) }).catch(() => null);
+  refreshPlayers();
+}
+
+function createPlayerRows(body, entry) {
+  entry.row = body.insertRow();
+  entry.row.className = 'player';
+  entry.row.insertCell();
+  entry.row.insertCell().className = 'num';
+  entry.row.insertCell().className = 'num';
+  entry.controls = body.insertRow();
+  entry.controls.className = 'player-controls';
+  const cell = entry.controls.insertCell();
+  cell.colSpan = 3;
+  cell.className = 'player-actions';
+  for (const [action, label] of [['kick', 'Kick'], ['ban', 'Ban']]) {
+    const button = document.createElement('button');
+    button.textContent = label;
+    if (action === 'ban') { button.className = 'danger'; }
+    button.onclick = () => playerAction(action, label, entry.player);
+    cell.append(button);
+    entry[action] = button;
+  }
+}
+
+async function refreshPlayers() {
+  const server = current();
+  // The count reads players/max only once the server answers queries, so nothing is polled during map generation
+  const ready = server?.status === 'Started' && String(server.players).includes('/');
+  const players = ready ? await api(`servers/${selected}/players`).catch(() => null) : null;
+  const table = $('players'), note = $('players-note'), body = table.tBodies[0];
+
+  table.hidden = !players?.length;
+  note.hidden = !!players?.length;
+  setText(note, !server ? 'Select a running server' : server.status !== 'Started' ? 'The server is not running' : !ready ? 'The server is starting' : !players ? 'Waiting for RCON to connect' : 'No players online');
+
+  const online = new Set((players || []).map(player => player.steamID));
+  for (const [id, entry] of playerRows) {
+    if (!online.has(id)) { entry.row.remove(); entry.controls.remove(); playerRows.delete(id); }
+  }
+  for (const player of players || []) {
+    if (!playerRows.has(player.steamID)) {
+      const entry = {};
+      createPlayerRows(body, entry);
+      playerRows.set(player.steamID, entry);
+    }
+    const entry = playerRows.get(player.steamID);
+    entry.player = player;
+    setText(entry.row.cells[0], player.displayName);
+    setText(entry.row.cells[1], player.ping);
+    setText(entry.row.cells[2], player.connected);
+    entry.kick.setAttribute('aria-label', `Kick ${player.displayName}`);
+    entry.ban.setAttribute('aria-label', `Ban ${player.displayName}`);
+  }
+}
+
+function refreshDetails() { refreshConsole(); refreshPlayers(); }
+
+let view = new URLSearchParams(location.search).get('view') === 'plugins' ? 'plugins' : 'console';
+
+function showView(name) {
+  view = name;
+  const plugins = name === 'plugins';
+  $('console-well').hidden = plugins;
+  $('plugins-view').hidden = !plugins;
+  $('tab-console').setAttribute('aria-selected', String(!plugins));
+  $('tab-plugins').setAttribute('aria-selected', String(plugins));
+  const params = new URLSearchParams(location.search);
+  if (plugins) { params.set('view', 'plugins'); } else { params.delete('view'); }
+  history.replaceState(null, '', `?${params}`);
+  if (plugins) {
+    refreshInstalled();
+    if (!$('results').tBodies[0].rows.length) { searchPlugins(1); }
+  }
+}
+$('tab-console').onclick = () => showView('console');
+$('tab-plugins').onclick = () => showView('plugins');
+
+async function pluginAction(plugin, action) {
+  await api(`servers/${selected}/plugins/${encodeURIComponent(plugin.name)}/${action}`, { method: 'POST' }).catch(() => null);
+  refreshInstalled();
+}
+
+function actionButton(label, onclick, className) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  if (className) { button.className = className; }
+  button.onclick = onclick;
+  return button;
+}
+
+let installedNames = new Set(), resultButtons = [];
+
+function syncInstallButtons() {
+  for (const { plugin, button } of resultButtons) {
+    setText(button, installedNames.has(plugin.name) ? 'Reinstall' : 'Install');
+  }
+}
+
+async function refreshInstalled() {
+  if (!selected) { return; }
+  const server = current();
+
+  const plugins = await api(`servers/${selected}/plugins`).catch(() => null) || [];
+  installedNames = new Set(plugins.map(plugin => plugin.name));
+  syncInstallButtons();
+  const body = $('installed').tBodies[0];
+  body.replaceChildren();
+  $('installed').hidden = !plugins.length;
+  $('installed-note').hidden = !!plugins.length;
+  for (const plugin of plugins) {
+    const row = body.insertRow();
+    row.className = 'plugin-row';
+    const info = row.insertCell();
+    const title = document.createElement('span');
+    title.className = 'plugin-title';
+    title.textContent = plugin.name;
+    const detail = document.createElement('span');
+    detail.className = 'plugin-detail';
+    detail.textContent = plugin.status;
+    info.append(title, detail);
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    actions.append(actionButton(plugin.enabled ? 'Disable' : 'Enable', () => pluginAction(plugin, plugin.enabled ? 'disable' : 'enable')));
+    if (plugin.enabled && server?.status === 'Started') { actions.append(actionButton('Reload', () => pluginAction(plugin, 'reload'))); }
+    actions.append(actionButton('Delete', async () => {
+      if (await confirmAction('Delete plugin', `Delete ${plugin.name}? Its config is kept.`, false) !== null) { pluginAction(plugin, 'delete'); }
+    }, 'danger'));
+    row.insertCell().append(actions);
+  }
+}
+
+let searchQuery = '', searchPage = 1, searchLast = 1;
+
+async function searchPlugins(page) {
+  const note = $('results-note');
+  setText(note, 'Searching uMod');
+  note.hidden = false;
+  $('search-send').disabled = true;
+  const result = await api(`plugins/search?query=${encodeURIComponent(searchQuery)}&page=${page}`).catch(() => null);
+  $('search-send').disabled = false;
+
+  const body = $('results').tBodies[0];
+  body.replaceChildren();
+  resultButtons = [];
+  const items = result?.items || [];
+  $('results').hidden = !items.length;
+  note.hidden = !!items.length;
+  $('pager').hidden = !items.length || result.lastPage < 2;
+  if (!result) { setText(note, 'Could not reach uMod. Try again in a moment.'); return; }
+  if (!items.length) { setText(note, 'No Rust plugins matched that search'); return; }
+
+  searchPage = result.page; searchLast = result.lastPage;
+  setText($('page-text'), `Page ${searchPage} of ${searchLast}`);
+  $('page-prev').disabled = searchPage <= 1;
+  $('page-next').disabled = searchPage >= searchLast;
+
+  for (const plugin of items) {
+    const row = body.insertRow();
+    row.className = 'plugin-row';
+    const info = row.insertCell();
+    const title = document.createElement('span');
+    title.className = 'plugin-title';
+    if (plugin.url?.startsWith('https://umod.org/')) {
+      const link = document.createElement('a');
+      link.href = plugin.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.textContent = plugin.title;
+      title.append(link);
+    } else {
+      title.textContent = plugin.title;
+    }
+    const detail = document.createElement('span');
+    detail.className = 'plugin-detail';
+    detail.textContent = `${plugin.description || ''} Version ${plugin.version}, ${plugin.downloads} downloads.`;
+    info.append(title, detail);
+    if (plugin.unmaintained) {
+      const warning = document.createElement('span');
+      warning.className = 'plugin-warning';
+      warning.textContent = 'Marked unmaintained on uMod';
+      info.append(warning);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const install = actionButton('Install', async () => {
+      const text = `Install ${plugin.title}? Plugins are code that runs on your server. It may need other plugins, so check its uMod page.`;
+      if (await confirmAction('Install plugin', text, false) === null) { return; }
+      install.disabled = true;
+      const response = await fetch(`/api/servers/${selected}/plugins/install`, { method: 'POST', headers: { 'X-ToolCupboard-Token': token || '', 'Content-Type': 'application/json' }, body: JSON.stringify({ text: plugin.slug }) }).catch(() => null);
+      install.disabled = false;
+      const failure = response?.ok ? null : (await response?.json().catch(() => null))?.error || 'The install failed.';
+      if (failure) { await confirmAction('Install failed', failure, false); }
+      refreshInstalled();
+    });
+    actions.append(install);
+    row.insertCell().append(actions);
+    resultButtons.push({ plugin, button: install });
+  }
+  syncInstallButtons();
+}
+
+$('search').onsubmit = event => {
+  event.preventDefault();
+  searchQuery = $('search-text').value.trim();
+  searchPlugins(1);
+};
+$('page-prev').onclick = () => searchPlugins(searchPage - 1);
+$('page-next').onclick = () => searchPlugins(searchPage + 1);
+
+for (const framework of ['oxide', 'carbon']) {
+  $(`install-${framework}`).onclick = async () => {
+    const label = framework === 'oxide' ? 'Oxide' : 'Carbon';
+    if (await confirmAction(`Install ${label}`, `Download and install ${label} on this server?`, false) === null) { return; }
+    await api(`servers/${selected}/install-${framework}`, { method: 'POST' }).catch(() => null);
+    await refreshServers();
+    refreshInstalled();
+  };
+}
+
+const prompts = {
+  stop: ['Stop server', 'Save the world and stop the server?'],
+  restart: ['Restart server', 'Save and restart the server? Players will be disconnected.'],
+  update: ['Update server', 'Update the server files through Steam?'],
+  backup: ['Back up server', 'Create a backup of this server?']
+};
+for (const action of ['start', 'stop', 'restart', 'update', 'backup']) {
+  $(action).onclick = async () => {
+    if (prompts[action] && await confirmAction(...prompts[action], false) === null) { return; }
+    $(action).disabled = true;
+    await api(`servers/${selected}/${action}`, { method: 'POST' }).catch(() => null);
+    refreshServers();
+  };
+}
+
+$('copy-address').onclick = async () => {
+  const button = $('copy-address');
+  await navigator.clipboard.writeText($('fact-address').textContent);
+  button.textContent = 'Copied';
+  setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+};
+
+$('command').onsubmit = async event => {
+  event.preventDefault();
+  const text = $('command-text').value.trim();
+  if (!text || !selected) { return; }
+  $('command-text').value = '';
+  await api(`servers/${selected}/command`, { method: 'POST', body: JSON.stringify({ text }) }).catch(() => null);
+  refreshConsole();
+};
+
+function tick() {
+  if (document.hidden) { return; }
+  refreshServers().then(refreshConsole);
+}
+refreshServers().then(() => { refreshDetails(); showView(view); });
+setInterval(tick, 2000);
+setInterval(() => { if (!document.hidden) { refreshPlayers(); } }, 6000);
+</script>
+</body>
+</html>

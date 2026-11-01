@@ -11,6 +11,9 @@
     <Compile Include="..\ToolCupboard\Functions\RustWipe.cs" Link="Linked\RustWipe.cs" />
     <Compile Include="..\ToolCupboard\Functions\UdpClientHandler.cs" Link="Linked\UdpClientHandler.cs" />
     <Compile Include="..\ToolCupboard\GameServer\Query\A2S.cs" Link="Linked\A2S.cs" />
+    <Compile Include="..\ToolCupboard\Web\WebAuth.cs" Link="Linked\WebAuth.cs" />
+    <Compile Include="..\ToolCupboard\Functions\RustMods.cs" Link="Linked\RustMods.cs" />
+    <Compile Include="..\ToolCupboard\Functions\UmodCatalog.cs" Link="Linked\UmodCatalog.cs" />
   </ItemGroup>
 
   <ItemGroup>

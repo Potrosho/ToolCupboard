@@ -10,6 +10,7 @@ namespace ToolCupboard.Functions
         public string Game { get; set; }
         public string Icon { get; set; }
         public string Status { get; set; }
+        public string Framework { get; set; }
         public string Name { get; set; }
         public string IP { get; set; }
         public string Port { get; set; }

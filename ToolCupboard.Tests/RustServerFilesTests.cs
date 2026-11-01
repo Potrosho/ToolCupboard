@@ -14,7 +14,7 @@ namespace ToolCupboard.Functions
 
         public static string GetServers(string serverId) => Path.Combine(Root, "servers", serverId);
 
-        public static string GetServersServerFiles(string serverId, string path1 = "") => Path.Combine(GetServers(serverId), "serverfiles", path1);
+        public static string GetServersServerFiles(string serverId, string path1 = "", string path2 = "", string path3 = "") => Path.Combine(GetServers(serverId), "serverfiles", path1, path2, path3);
     }
 }
 

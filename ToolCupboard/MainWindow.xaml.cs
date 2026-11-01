@@ -140,6 +140,10 @@ namespace ToolCupboard
 
 
         private readonly DiscordBot.Bot g_DiscordBot = new DiscordBot.Bot();
+        private Web.WebServer g_WebServer;
+        private string g_UmodQuery = string.Empty;
+        private int g_UmodPage = 1;
+        private int g_UmodLastPage = 1;
 
         public MainWindow(bool showCrashHint)
         {
@@ -337,6 +341,8 @@ namespace ToolCupboard
 
             StartConsoleRefresh();
 
+            StartWebServer();
+
             StartServerTableRefresh();
 
             StartDashBoardRefresh();
@@ -449,6 +455,7 @@ namespace ToolCupboard
                         Game = serverConfig.ServerGame,
                         Icon = icon,
                         Status = status,
+                        Framework = RustMods.Detect(i.ToString()).ToString(),
                         Name = serverConfig.ServerName,
                         IP = serverConfig.ServerIP,
                         Port = serverConfig.ServerPort,
@@ -705,6 +712,8 @@ namespace ToolCupboard
 
             // Stop Discord Bot
             g_DiscordBot.Stop().ConfigureAwait(false);
+
+            g_WebServer?.Stop().ConfigureAwait(false);
         }
 
         private void DataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1167,6 +1176,148 @@ namespace ToolCupboard
             }
         }
 
+        #region Web UI
+        private async void StartWebServer()
+        {
+            try
+            {
+                g_WebServer = new Web.WebServer(this);
+                await g_WebServer.Start();
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is InvalidOperationException)
+            {
+                g_WebServer = null;
+                Log("System", $"[NOTICE] The web UI is unavailable: {e.Message}");
+            }
+        }
+
+        private async void Button_WebUI_Click(object sender, RoutedEventArgs e)
+        {
+            if (g_WebServer == null)
+            {
+                await this.ShowMessageAsync("Web UI", "The web UI did not start. Check the log for the reason.");
+                return;
+            }
+
+            ProcessManagement.OpenShell(g_WebServer.Url);
+        }
+
+        public object[] GetWebServers()
+        {
+            return ServerGrid.Items.Cast<ServerTable>().Select(server => (object)new
+            {
+                id = server.ID,
+                name = server.Name,
+                status = server.Status,
+                framework = RustMods.Detect(server.ID).ToString(),
+                ip = server.IP,
+                port = server.Port,
+                map = server.Defaultmap,
+                players = server.Maxplayers,
+                uptime = server.Uptime
+            }).ToArray();
+        }
+
+        // Returns null for an unknown server or action, and false if the server is in the wrong state
+        public async Task<bool?> RunWebAction(string serverId, string action)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            ServerStatus status = GetServerMetadata(server.ID).ServerStatus;
+            bool stopped = status == ServerStatus.Stopped;
+            bool started = status == ServerStatus.Started;
+
+            switch (action)
+            {
+                case "start": if (!stopped) { return false; } await GameServer_Start(server); return true;
+                case "stop": if (!started) { return false; } await GameServer_Stop(server); return true;
+                case "restart": if (!started) { return false; } await GameServer_Restart(server); return true;
+                case "update": if (!stopped) { return false; } await GameServer_Update(server); return true;
+                case "backup": if (!stopped) { return false; } await GameServer_Backup(server); return true;
+                case "install-oxide": return stopped && await RunWebInstall(server, RustModFramework.Oxide);
+                case "install-carbon": return stopped && await RunWebInstall(server, RustModFramework.Carbon);
+                default: return null;
+            }
+        }
+
+        private async Task<bool> RunWebInstall(ServerTable server, RustModFramework framework)
+        {
+            string error = await RustMods.Install(server.ID, framework);
+            Log(server.ID, error == null ? $"Mods: {framework} installed" : $"[ERROR] Fail to install {framework}: {error}");
+            server.Framework = RustMods.Detect(server.ID).ToString();
+            ServerGrid.Items.Refresh();
+            return error == null;
+        }
+
+        public RustPlugin[] GetWebPlugins(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            RustModFramework framework = RustMods.Detect(server.ID);
+            return framework == RustModFramework.None ? Array.Empty<RustPlugin>() : RustMods.GetPlugins(server.ID, framework).ToArray();
+        }
+
+        public async Task<string> InstallWebPlugin(string serverId, string slug)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+
+            string error = await UmodCatalog.Install(server.ID, RustMods.Detect(server.ID), slug);
+            Log(server.ID, error == null ? $"Mods: Installed {slug} from uMod" : $"[ERROR] Fail to install {slug}: {error}");
+            return error;
+        }
+
+        // The name comes from the page, so it must match a plugin that is on disk
+        public async Task<bool?> RunWebPluginAction(string serverId, string name, string action)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            RustModFramework framework = RustMods.Detect(server.ID);
+            RustPlugin plugin = framework == RustModFramework.None ? null : RustMods.GetPlugins(server.ID, framework).FirstOrDefault(p => p.Name == name);
+            if (plugin == null) { return null; }
+
+            switch (action)
+            {
+                case "enable": RustMods.SetEnabled(server.ID, framework, plugin, true); break;
+                case "disable": RustMods.SetEnabled(server.ID, framework, plugin, false); break;
+                case "delete": File.Delete(plugin.Path); break;
+                case "reload":
+                    RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+                    if (rcon == null || !rcon.IsConnected) { return false; }
+                    await rcon.SendAsync(RustMods.GetReloadCommand(framework, plugin.Name));
+                    break;
+                default: return null;
+            }
+
+            Log(server.ID, $"Mods: {action} plugin {plugin.Name} from the web UI");
+            return true;
+        }
+
+        public string[] GetWebConsole(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : GetServerMetadata(server.ID).ServerConsole.Get().Split(Environment.NewLine);
+        }
+
+        public bool SendWebCommand(string serverId, string command)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null || GetServerMetadata(server.ID).Process == null) { return false; }
+
+            SendCommand(server, command);
+            return true;
+        }
+
+        public RustRcon GetWebRcon(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : GetServerMetadata(server.ID).Rcon;
+        }
+        #endregion
+
         #region Server Settings
         private void Tools_ServerSettings_Click(object sender, RoutedEventArgs e)
         {
@@ -1253,12 +1404,119 @@ namespace ToolCupboard
             Log(server.ID, error == null ? $"Mods: {framework} updated" : $"[ERROR] Fail to update {framework}: {error}");
         }
 
-        private void Tools_ModsAndPlugins_Click(object sender, RoutedEventArgs e)
+        private async void Tools_ModsAndPlugins_Click(object sender, RoutedEventArgs e)
         {
             if (ServerGrid.SelectedItem == null) { return; }
 
             RefreshMods();
             ToggleMahappFlyout(MahAppFlyout_Mods);
+
+            if (dataGrid_Umod.ItemsSource == null)
+            {
+                await SearchUmod(1);
+            }
+        }
+
+        private void DataGrid_Plugins_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            bool selected = dataGrid_Plugins.SelectedItem != null;
+            button_PluginToggle.IsEnabled = selected;
+            button_PluginReload.IsEnabled = selected;
+            button_PluginConfig.IsEnabled = selected;
+            button_PluginDelete.IsEnabled = selected;
+        }
+
+        private void DataGrid_Umod_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            button_UmodInstall.IsEnabled = dataGrid_Umod.SelectedItem != null;
+        }
+
+        private async Task SearchUmod(int page)
+        {
+            label_UmodStatus.Content = "Searching uMod";
+            button_UmodSearch.IsEnabled = false;
+
+            try
+            {
+                UmodPage result = await UmodCatalog.Search(g_UmodQuery, page);
+                g_UmodPage = result.Page;
+                g_UmodLastPage = result.LastPage;
+                dataGrid_Umod.ItemsSource = result.Items;
+                MarkInstalledUmodPlugins();
+                label_UmodStatus.Content = result.Items.Count == 0 ? "No Rust plugins matched that search" : $"Page {g_UmodPage} of {g_UmodLastPage}";
+            }
+            catch (Exception e) when (e is System.Net.Http.HttpRequestException || e is TaskCanceledException || e is Newtonsoft.Json.JsonException)
+            {
+                dataGrid_Umod.ItemsSource = new List<UmodPlugin>();
+                g_UmodLastPage = 1;
+                label_UmodStatus.Content = "Could not reach uMod. Try again in a moment.";
+            }
+
+            button_UmodSearch.IsEnabled = true;
+            button_UmodPrevious.IsEnabled = g_UmodPage > 1;
+            button_UmodNext.IsEnabled = g_UmodPage < g_UmodLastPage;
+        }
+
+        private void MarkInstalledUmodPlugins()
+        {
+            var server = ServerGrid.SelectedItem as ServerTable;
+            if (server == null || !(dataGrid_Umod.ItemsSource is List<UmodPlugin> results)) { return; }
+
+            RustModFramework framework = RustMods.Detect(server.ID);
+            var installed = framework == RustModFramework.None ? new List<RustPlugin>() : RustMods.GetPlugins(server.ID, framework);
+            foreach (UmodPlugin plugin in results)
+            {
+                plugin.Installed = installed.Any(p => p.Name == plugin.Name);
+            }
+
+            dataGrid_Umod.Items.Refresh();
+        }
+
+        private async void Button_UmodSearch_Click(object sender, RoutedEventArgs e)
+        {
+            g_UmodQuery = textBox_UmodSearch.Text.Trim();
+            await SearchUmod(1);
+        }
+
+        private void TextBox_UmodSearch_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                Button_UmodSearch_Click(sender, e);
+            }
+        }
+
+        private async void Button_UmodPrevious_Click(object sender, RoutedEventArgs e)
+        {
+            await SearchUmod(g_UmodPage - 1);
+        }
+
+        private async void Button_UmodNext_Click(object sender, RoutedEventArgs e)
+        {
+            await SearchUmod(g_UmodPage + 1);
+        }
+
+        private async void Button_UmodInstall_Click(object sender, RoutedEventArgs e)
+        {
+            var server = (ServerTable)ServerGrid.SelectedItem;
+            var plugin = dataGrid_Umod.SelectedItem as UmodPlugin;
+            if (server == null || plugin == null) { return; }
+
+            string note = plugin.Unmaintained ? "\n\nuMod marks this plugin as unmaintained." : string.Empty;
+            var result = await this.ShowMessageAsync("Install Plugin", $"Install {plugin.Title}? Plugins are code that runs on your server. It may need other plugins, so check its uMod page.{note}", MessageDialogStyle.AffirmativeAndNegative);
+            if (result != MessageDialogResult.Affirmative) { return; }
+
+            ProgressDialogController controller = await this.ShowProgressAsync($"Installing {plugin.Title}...", "Please wait...");
+            controller.SetIndeterminate();
+            string error = await InstallWebPlugin(server.ID, plugin.Slug);
+            await controller.CloseAsync();
+
+            if (error != null)
+            {
+                await this.ShowMessageAsync("Install Plugin", error);
+            }
+
+            RefreshMods();
         }
 
         private void RefreshMods()
@@ -1267,10 +1525,13 @@ namespace ToolCupboard
             if (server == null) { return; }
 
             RustModFramework framework = RustMods.Detect(server.ID);
+            server.Framework = framework.ToString();
+            ServerGrid.Items.Refresh();
             label_ModFramework.Content = framework == RustModFramework.None ? "No mod framework installed" : $"{framework} installed";
             button_RemoveFramework.IsEnabled = framework != RustModFramework.None;
             button_PluginAdd.IsEnabled = framework != RustModFramework.None;
             dataGrid_Plugins.ItemsSource = framework == RustModFramework.None ? null : RustMods.GetPlugins(server.ID, framework);
+            MarkInstalledUmodPlugins();
         }
 
         private async Task<bool> RequireStoppedForMods(ServerTable server)
@@ -1377,11 +1638,17 @@ namespace ToolCupboard
             RefreshMods();
         }
 
-        private void Button_PluginConfig_Click(object sender, RoutedEventArgs e)
+        private async void Button_PluginConfig_Click(object sender, RoutedEventArgs e)
         {
             var server = (ServerTable)ServerGrid.SelectedItem;
             var plugin = dataGrid_Plugins.SelectedItem as RustPlugin;
-            if (server == null || plugin == null || !plugin.HasConfig) { return; }
+            if (server == null || plugin == null) { return; }
+
+            if (!plugin.HasConfig)
+            {
+                await this.ShowMessageAsync("Open Config", $"{plugin.Name} has no config file yet. Plugins create one the first time they load on a running server, and some plugins never need one.");
+                return;
+            }
 
             ProcessManagement.OpenShell(RustMods.GetConfigPath(server.ID, RustMods.Detect(server.ID), plugin.Name));
         }

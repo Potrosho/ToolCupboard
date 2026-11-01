@@ -20,6 +20,7 @@
     <mah:MetroWindow.RightWindowCommands>
         <mah:WindowCommands>
             <!--<Button x:Name="button_Settings" Content="Settings" Click="Button_Settings_Click"/>-->
+            <Button x:Name="button_WebUI" Content="Web UI" Click="Button_WebUI_Click"/>
             <Button x:Name="button_Hide" Content="Hide" Click="Button_Hide_Click"/>
         </mah:WindowCommands>
     </mah:MetroWindow.RightWindowCommands>
@@ -86,30 +87,61 @@
                     <Label x:Name="label_SettingsStatus" Padding="0"/>
                 </StackPanel>
             </mah:Flyout>
-            <mah:Flyout x:Name="MahAppFlyout_Mods" Header="Mods and Plugins" Position="Right" Width="640" Theme="Adapt" IsModal="True">
-                <DockPanel Margin="20,0,20,20">
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <mah:Flyout x:Name="MahAppFlyout_Mods" Header="Mods and Plugins" Position="Right" Width="760" Theme="Adapt" IsModal="True">
+                <Grid Margin="20,0,20,20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="2*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="3*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <DockPanel Grid.Row="0" Margin="0,0,0,12">
                         <Label x:Name="label_ModFramework" Padding="0" VerticalAlignment="Center" DockPanel.Dock="Left"/>
                         <Button x:Name="button_RemoveFramework" Content="Remove" Width="80" Margin="5,0,0,0" DockPanel.Dock="Right" Click="Button_RemoveFramework_Click"/>
-                        <Button x:Name="button_InstallCarbon" Content="Install Carbon" Width="110" Margin="5,0,0,0" DockPanel.Dock="Right" Click="Button_InstallCarbon_Click"/>
-                        <Button x:Name="button_InstallOxide" Content="Install Oxide" Width="110" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="Button_InstallOxide_Click"/>
+                        <Button x:Name="button_InstallCarbon" Content="Install Carbon" Width="120" Margin="5,0,0,0" DockPanel.Dock="Right" Click="Button_InstallCarbon_Click"/>
+                        <Button x:Name="button_InstallOxide" Content="Install Oxide" Width="120" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="Button_InstallOxide_Click"/>
                     </DockPanel>
-                    <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-                        <Button x:Name="button_PluginAdd" Content="Add" Width="70" DockPanel.Dock="Left" Click="Button_PluginAdd_Click"/>
-                        <Button Content="Enable/Disable" Width="115" Margin="5,0,0,0" DockPanel.Dock="Left" Click="Button_PluginToggle_Click"/>
-                        <Button Content="Reload" Width="70" Margin="5,0,0,0" DockPanel.Dock="Left" Click="Button_PluginReload_Click"/>
-                        <Button Content="Config" Width="70" Margin="5,0,0,0" DockPanel.Dock="Left" Click="Button_PluginConfig_Click"/>
-                        <Button Content="Delete" Width="70" DockPanel.Dock="Right" HorizontalAlignment="Right" Background="OrangeRed" Foreground="White" Click="Button_PluginDelete_Click"/>
-                    </DockPanel>
-                    <DataGrid x:Name="dataGrid_Plugins" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False">
+                    <Label Grid.Row="1" Content="Installed Plugins" FontWeight="SemiBold" Padding="0" Margin="0,0,0,4"/>
+                    <DataGrid Grid.Row="2" x:Name="dataGrid_Plugins" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" SelectionChanged="DataGrid_Plugins_SelectionChanged">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Plugin" Binding="{Binding Name}" Width="*"/>
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
-                            <DataGridCheckBoxColumn Header="Config" Binding="{Binding HasConfig}" Width="70"/>
+                            <DataGridTextColumn Header="Config File" Binding="{Binding ConfigText}" Width="100"/>
                             <DataGridTextColumn Header="Modified" Binding="{Binding ModifiedText}" Width="140"/>
                         </DataGrid.Columns>
                     </DataGrid>
-                </DockPanel>
+                    <DockPanel Grid.Row="3" Margin="0,8,0,16">
+                        <Button x:Name="button_PluginAdd" Content="Add From File" Width="115" DockPanel.Dock="Left" Click="Button_PluginAdd_Click"/>
+                        <Button x:Name="button_PluginToggle" Content="Enable/Disable" Width="120" Margin="5,0,0,0" DockPanel.Dock="Left" IsEnabled="False" Click="Button_PluginToggle_Click"/>
+                        <Button x:Name="button_PluginReload" Content="Reload Plugin" Width="115" Margin="5,0,0,0" DockPanel.Dock="Left" IsEnabled="False" Click="Button_PluginReload_Click"/>
+                        <Button x:Name="button_PluginConfig" Content="Open Config" Width="105" Margin="5,0,0,0" DockPanel.Dock="Left" IsEnabled="False" Click="Button_PluginConfig_Click"/>
+                        <Button x:Name="button_PluginDelete" Content="Delete Plugin" Width="110" DockPanel.Dock="Right" HorizontalAlignment="Right" Background="OrangeRed" Foreground="White" IsEnabled="False" Click="Button_PluginDelete_Click"/>
+                    </DockPanel>
+                    <Label Grid.Row="4" Content="Find Plugins on uMod" FontWeight="SemiBold" Padding="0" Margin="0,0,0,4"/>
+                    <DockPanel Grid.Row="5" Margin="0,0,0,6">
+                        <Button x:Name="button_UmodSearch" Content="Search" Width="80" Margin="5,0,0,0" DockPanel.Dock="Right" IsDefault="False" Click="Button_UmodSearch_Click"/>
+                        <TextBox x:Name="textBox_UmodSearch" Height="26" KeyDown="TextBox_UmodSearch_KeyDown"/>
+                    </DockPanel>
+                    <DataGrid Grid.Row="6" x:Name="dataGrid_Umod" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" CanUserAddRows="False" SelectionChanged="DataGrid_Umod_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Plugin" Binding="{Binding Title}" Width="170"/>
+                            <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
+                            <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="75"/>
+                            <DataGridTextColumn Header="Downloads" Binding="{Binding Downloads}" Width="115"/>
+                            <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="110"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DockPanel Grid.Row="7" Margin="0,8,0,0">
+                        <Button x:Name="button_UmodInstall" Content="Install Selected Plugin" Width="170" DockPanel.Dock="Left" IsEnabled="False" Click="Button_UmodInstall_Click"/>
+                        <Button x:Name="button_UmodNext" Content="Next" Width="70" Margin="5,0,0,0" DockPanel.Dock="Right" IsEnabled="False" Click="Button_UmodNext_Click"/>
+                        <Button x:Name="button_UmodPrevious" Content="Previous" Width="85" Margin="5,0,0,0" DockPanel.Dock="Right" IsEnabled="False" Click="Button_UmodPrevious_Click"/>
+                        <Label x:Name="label_UmodStatus" Padding="0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                </Grid>
             </mah:Flyout>
             <mah:Flyout x:Name="MahAppFlyout_Wipe" Header="Wipe Server" Position="Right" Width="420" Theme="Adapt" IsModal="True">
                 <StackPanel Margin="20,0,20,20">
@@ -619,6 +651,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="Status" IsReadOnly="True" Binding="{Binding Path=Status}" Width="80" MinWidth="80" MaxWidth="80"/>
+                        <DataGridTextColumn Header="Framework" IsReadOnly="True" Binding="{Binding Path=Framework}" Width="85" MinWidth="85" MaxWidth="85"/>
                         <DataGridTextColumn Header="Server Name" IsReadOnly="True" Binding="{Binding Path=Name}" Width="10*" MinWidth="105"/>
                         <DataGridTextColumn Header="IP Address" IsReadOnly="True" Binding="{Binding Path=IP}" Width="4*" MinWidth="88"/>
                         <DataGridTextColumn Header="Port" IsReadOnly="True" Binding="{Binding Path=Port}" Width="4*" MinWidth="52"/>
