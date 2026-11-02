@@ -18,12 +18,9 @@
 
   <ItemGroup>
     <Resource Include="Images\**\*.png;Images\**\*.ico" />
-    <EmbeddedResource Include="Web\index.html" LogicalName="ToolCupboard.Web.index.html" />
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Discord.Net" Version="3.20.2" />
     <PackageReference Include="LiveCharts.Wpf.Core" Version="0.9.8" />
     <PackageReference Include="MahApps.Metro" Version="2.4.11" />
     <PackageReference Include="NCrontab.Signed" Version="3.4.0" />

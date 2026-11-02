@@ -87,7 +87,7 @@ namespace ToolCupboard.Functions
     /// Runs the servers: starting, stopping, updating, backups, crash handling, schedules, and RCON.
     /// Everything runs on the context passed in, so state needs no locks.
     /// </summary>
-    public class ServerManager
+    public partial class ServerManager
     {
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, WindowShowStyle nCmdShow);
@@ -113,6 +113,18 @@ namespace ToolCupboard.Functions
         public ServerManager(SynchronizationContext context)
         {
             _context = context;
+            Bot = new DiscordBot.Bot(this);
+
+            for (int i = 0; i <= AppInfo.MaxServers; i++)
+            {
+                _serverMetadata[i] = new ServerMetadata
+                {
+                    ServerStatus = ServerStatus.Stopped,
+                    ServerConsole = new ServerConsole(i)
+                };
+            }
+
+            ServerConsole.OutputReceived += (serverId, line) => _context.Post(_ => _serverMetadata[int.Parse(serverId)].ServerConsole.Add(line), null);
         }
 
         public ServerMetadata GetServerMetadata(object serverId) => _serverMetadata.TryGetValue(int.Parse(serverId.ToString()), out var metadata) ? metadata : null;
@@ -124,6 +136,9 @@ namespace ToolCupboard.Functions
             string logPath = ServerPath.GetLogs();
             Directory.CreateDirectory(logPath);
             File.AppendAllText(Path.Combine(logPath, $"L{DateTime.Now:yyyyMMdd}.log"), log);
+            _recentLog.Add(log);
+            if (_recentLog.Count > 200) { _recentLog.RemoveAt(0); }
+
             Logged?.Invoke(log);
         }
 
@@ -190,7 +205,7 @@ namespace ToolCupboard.Functions
                 Log(server.ID, "[Notice] " + gameServer.Notice);
             }
             SetServerStatus(server, "Started", ServerCache.GetPID(server.ID).ToString());
-        }
+        }
 
         public async Task GameServer_Stop(ServerTable server)
         {
@@ -213,7 +228,7 @@ namespace ToolCupboard.Functions
             }
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
             SetServerStatus(server, "Stopped");
-        }
+        }
 
         public async Task GameServer_Restart(ServerTable server)
         {
@@ -248,7 +263,7 @@ namespace ToolCupboard.Functions
                 Log(server.ID, "[Notice] " + gameServer.Notice);
             }
             SetServerStatus(server, "Started", ServerCache.GetPID(server.ID).ToString());
-        }
+        }
 
         public async Task<bool> GameServer_Update(ServerTable server, string notes = "", bool validate = false)
         {
@@ -285,7 +300,7 @@ namespace ToolCupboard.Functions
             SetServerStatus(server, "Stopped");
 
             return true;
-        }
+        }
 
         public async Task<bool> GameServer_Backup(ServerTable server, string notes = "")
         {
@@ -362,7 +377,7 @@ namespace ToolCupboard.Functions
             SetServerStatus(server, "Stopped");
 
             return true;
-        }
+        }
 
         public async Task<bool> GameServer_RestoreBackup(ServerTable server, string backupFile)
         {
@@ -418,7 +433,7 @@ namespace ToolCupboard.Functions
             SetServerStatus(server, "Stopped");
 
             return true;
-        }
+        }
 
         public async Task<bool> GameServer_Delete(ServerTable server)
         {
@@ -479,10 +494,10 @@ namespace ToolCupboard.Functions
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
             SetServerStatus(server, "Stopped");
 
-            TableChanged?.Invoke();
+            ReloadServers();
 
             return true;
-        }
+        }
 
         public async void OnGameServerExited(ServerTable server)
         {
@@ -542,7 +557,7 @@ namespace ToolCupboard.Functions
                     }
                 }
             }, null);
-        }
+        }
 
         public async void StartAutoUpdateCheck(ServerTable server)
         {
@@ -652,7 +667,7 @@ namespace ToolCupboard.Functions
                     Log(server.ID, $"[NOTICE] Fail to get remote build.");
                 }
             }
-        }
+        }
 
         public async void StartRestartCrontabCheck(ServerTable server)
         {
@@ -724,7 +739,7 @@ namespace ToolCupboard.Functions
                     }
                 }
             }
-        }
+        }
 
         public bool IsWipeDue(string serverId)
         {
@@ -733,7 +748,7 @@ namespace ToolCupboard.Functions
 
             DateTime? next = CrontabSchedule.TryParse(metadata.WipeCrontabFormat)?.GetNextOccurrence(metadata.WipeLast);
             return next != null && DateTime.Now >= next;
-        }
+        }
 
         // Server_BeginStart runs a due wipe, so a wipe missed here still happens at the next start
         public async void StartWipeCrontabCheck(ServerTable server)
@@ -771,7 +786,7 @@ namespace ToolCupboard.Functions
 
                 break;
             }
-        }
+        }
 
         public async Task<bool> WipeServerData(ServerTable server, RustWipeType type, bool newSeed)
         {
@@ -794,7 +809,7 @@ namespace ToolCupboard.Functions
                 Log(server.ID, $"[ERROR] Wipe failed: {e.Message}");
                 return false;
             }
-        }
+        }
 
         // Keeps an RCON connection open while the server runs. The port opens late in the boot, so it retries.
         public async void StartRcon(ServerTable server, Process p)
@@ -842,7 +857,7 @@ namespace ToolCupboard.Functions
 
                 await Task.Delay(5000);
             }
-        }
+        }
 
         public void AddConsoleOutput(int serverId, string text)
         {
@@ -850,7 +865,7 @@ namespace ToolCupboard.Functions
             {
                 _serverMetadata[serverId].ServerConsole.Add(line.TrimEnd());
             }
-        }
+        }
 
         // Warns players in chat before an automatic restart. Returns false if the server stopped during the countdown.
         public async Task<bool> AnnounceRestart(ServerTable server, Process p, string reason)
@@ -869,7 +884,7 @@ namespace ToolCupboard.Functions
             }
 
             return true;
-        }
+        }
 
         public async void StartQuery(ServerTable server)
         {
@@ -909,7 +924,7 @@ namespace ToolCupboard.Functions
 
                 await Task.Delay(5000);
             }
-        }
+        }
 
         public async Task EndAllRunningProcess(string serverId)
         {
@@ -943,7 +958,7 @@ namespace ToolCupboard.Functions
                     }
                 }
             });
-        }
+        }
 
         public void SetServerStatus(ServerTable server, string status, string pid = null)
         {
@@ -965,7 +980,7 @@ namespace ToolCupboard.Functions
 
             ServerChanged?.Invoke(server);
             StatusChanged?.Invoke();
-        }
+        }
 
         public async void SendCommand(ServerTable server, string command)
         {
@@ -986,7 +1001,7 @@ namespace ToolCupboard.Functions
             }
 
             _serverMetadata[int.Parse(server.ID)].ServerConsole.Input(p, command, GetServerMetadata(server.ID).MainWindow);
-        }
+        }
 
         public static bool IsValidIPAddress(string ip)
         {
@@ -1002,7 +1017,7 @@ namespace ToolCupboard.Functions
             }
 
             return splitValues.All(r => byte.TryParse(r, out byte tempForParsing));
-        }
+        }
 
         public static bool IsValidPort(string port)
         {
@@ -1012,7 +1027,7 @@ namespace ToolCupboard.Functions
             }
 
             return portnum > 1 && portnum < 65535;
-        }
+        }
 
         public async Task<dynamic> Server_BeginStart(ServerTable server)
         {
@@ -1145,7 +1160,7 @@ namespace ToolCupboard.Functions
             StartRcon(server, p);
 
             return gameServer;
-        }
+        }
 
         public async Task<bool> Server_BeginStop(ServerTable server, Process p)
         {
@@ -1179,7 +1194,7 @@ namespace ToolCupboard.Functions
             }
 
             return true;
-        }
+        }
 
         public async Task<(Process, string, dynamic)> Server_BeginUpdate(ServerTable server, bool silenceCheck, bool forceUpdate, bool validate = false, string custum = null)
         {
@@ -1215,7 +1230,7 @@ namespace ToolCupboard.Functions
             }
 
             return (null, remoteVersion, gameServer);
-        }
+        }
 
         public async Task UpdateModFramework(ServerTable server)
         {

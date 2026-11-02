@@ -10,3 +10,6 @@ ToolCupboard.Tests/obj/
 *.user
 ToolCupboard.Core/bin/
 ToolCupboard.Core/obj/
+ToolCupboard.Web/bin/
+ToolCupboard.Web/obj/
+dist/

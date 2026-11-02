@@ -5,7 +5,6 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
-using System.Windows.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -23,17 +22,15 @@ namespace ToolCupboard.Web
         public const int Port = 27080;
         private const string TOKEN_HEADER = "X-ToolCupboard-Token";
 
-        private readonly MainWindow _window;
-        private readonly Dispatcher _dispatcher;
+        private readonly ServerManager _servers;
         private readonly string _token;
         private WebApplication _app;
 
         public string Url => $"http://127.0.0.1:{Port}/#token={_token}";
 
-        public WebServer(MainWindow window)
+        public WebServer(ServerManager servers)
         {
-            _window = window;
-            _dispatcher = window.Dispatcher;
+            _servers = servers;
 
             string tokenPath = ServerPath.Get(ServerPath.FolderName.Configs, "webtoken.txt");
             if (!File.Exists(tokenPath))
@@ -46,7 +43,7 @@ namespace ToolCupboard.Web
 
         public async Task Start()
         {
-            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = MainWindow.APP_PATH });
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = AppInfo.RootPath });
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, Port));
 
@@ -96,92 +93,87 @@ namespace ToolCupboard.Web
             }
         }
 
-        // The window owns the server state, so every read and action runs on its thread
-        private Task<T> OnWindow<T>(Func<T> read) => _dispatcher.InvokeAsync(read).Task;
-
-        private Task<T> OnWindow<T>(Func<Task<T>> action) => _dispatcher.InvokeAsync(action).Task.Unwrap();
-
         private static IResult Refused(string error) => error == null ? Results.Ok() : Results.Json(new { error }, statusCode: StatusCodes.Status409Conflict);
 
         private void MapApi(IEndpointRouteBuilder api)
         {
-            api.MapGet("/api/servers", async () => Results.Json(await OnWindow(_window.GetWebServers)));
+            api.MapGet("/api/servers", async () => Results.Json(await _servers.Run(_servers.GetWebServers)));
 
             api.MapPost("/api/servers/{id}/{action}", async (string id, string action) =>
             {
-                bool? done = await OnWindow(() => _window.RunWebAction(id, action));
+                bool? done = await _servers.Run(() => _servers.RunWebAction(id, action));
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
             api.MapGet("/api/servers/{id}/console", async (string id) =>
             {
-                string[] lines = await OnWindow(() => _window.GetWebConsole(id));
+                string[] lines = await _servers.Run(() => _servers.GetWebConsole(id));
                 return lines == null ? Results.NotFound() : Results.Json(lines);
             });
 
             api.MapPost("/api/servers/{id}/command", async (string id, WebCommand body) =>
             {
-                bool sent = !string.IsNullOrWhiteSpace(body?.Text) && await OnWindow(() => _window.SendWebCommand(id, body.Text));
+                bool sent = !string.IsNullOrWhiteSpace(body?.Text) && await _servers.Run(() => _servers.SendWebCommand(id, body.Text));
                 return sent ? Results.Ok() : Results.Conflict();
             });
 
             api.MapGet("/api/servers/{id}/settings", async (string id) =>
             {
-                WebSettings settings = await OnWindow(() => _window.GetWebSettings(id));
+                WebSettings settings = await _servers.Run(() => _servers.GetWebSettings(id));
                 return settings == null ? Results.NotFound() : Results.Json(settings);
             });
 
-            api.MapPut("/api/servers/{id}/settings", async (string id, WebSettings settings) => Refused(await OnWindow(() => _window.SaveWebSettings(id, settings))));
+            api.MapPut("/api/servers/{id}/settings", async (string id, WebSettings settings) => Refused(await _servers.Run(() => _servers.SaveWebSettings(id, settings))));
 
             api.MapGet("/api/servers/{id}/wipe", async (string id) =>
             {
-                object info = await OnWindow(() => _window.GetWebWipeInfo(id));
+                object info = await _servers.Run(() => _servers.GetWebWipeInfo(id));
                 return info == null ? Results.NotFound() : Results.Json(info);
             });
 
-            api.MapPost("/api/servers/{id}/wipe", async (string id, WebConfirmed request) => Refused(await OnWindow(() => _window.RunWebWipe(id, request))));
+            api.MapPost("/api/servers/{id}/wipe", async (string id, WebConfirmed request) => Refused(await _servers.Run(() => _servers.RunWebWipe(id, request))));
 
             api.MapGet("/api/servers/{id}/backups", async (string id) =>
             {
-                object[] backups = await OnWindow(() => _window.GetWebBackups(id));
+                object[] backups = await _servers.Run(() => _servers.GetWebBackups(id));
                 return backups == null ? Results.NotFound() : Results.Json(backups);
             });
 
-            api.MapPost("/api/servers/{id}/backups/restore", async (string id, WebConfirmed request) => Refused(await OnWindow(() => _window.RestoreWebBackup(id, request))));
+            api.MapPost("/api/servers/{id}/backups/restore", async (string id, WebConfirmed request) => Refused(await _servers.Run(() => _servers.RestoreWebBackup(id, request))));
 
-            api.MapPost("/api/servers/{id}/plugins/upload", async (string id, WebPluginUpload upload) => Refused(await OnWindow(() => _window.AddWebPlugin(id, upload))));
+            api.MapPost("/api/servers/{id}/plugins/upload", async (string id, WebPluginUpload upload) => Refused(await _servers.Run(() => _servers.AddWebPlugin(id, upload))));
 
-            api.MapGet("/api/system", async () => Results.Json(await OnWindow(_window.GetWebSystem)));
+            api.MapGet("/api/system", async () => Results.Json(await _servers.Run(_servers.GetWebSystem)));
 
-            api.MapPut("/api/system/options", async (WebAppOptions options) => { await OnWindow(() => _window.SaveWebOptions(options)); return Results.Ok(); });
+            api.MapPut("/api/system/options", async (WebAppOptions options) => { await _servers.Run(() => _servers.SaveWebOptions(options)); return Results.Ok(); });
 
-            api.MapGet("/api/discord", async () => Results.Json(await OnWindow(_window.GetWebDiscord)));
+            api.MapGet("/api/discord", async () => Results.Json(await _servers.Run(_servers.GetWebDiscord)));
 
-            api.MapPut("/api/discord", async (WebDiscord discord) => Refused(await OnWindow(() => _window.SaveWebDiscord(discord))));
+            api.MapPut("/api/discord", async (WebDiscord discord) => Refused(await _servers.Run(() => _servers.SaveWebDiscord(discord))));
 
             api.MapPost("/api/discord/{action}", async (string action) =>
             {
                 if (action != "start" && action != "stop") { return Results.NotFound(); }
-                return await OnWindow(() => _window.SetWebDiscordRunning(action == "start")) ? Results.Ok() : Results.Conflict();
+                return await _servers.Run(() => _servers.SetWebDiscordRunning(action == "start")) ? Results.Ok() : Results.Conflict();
             });
 
-            api.MapGet("/api/job", async () => Results.Json(await OnWindow(_window.GetWebJob)));
+            api.MapGet("/api/job", async () => Results.Json(await _servers.Run(_servers.GetWebJob)));
 
             api.MapPost("/api/job", async (WebNewServer request) =>
             {
                 if (request?.Kind != "install" && request?.Kind != "import") { return Results.NotFound(); }
-                return Refused(await OnWindow(() => _window.StartWebJob(request.Kind, request.Name, request.Path)));
+                return Refused(await _servers.Run(() => _servers.StartWebJob(request.Kind, request.Name, request.Path)));
             });
 
-            api.MapPost("/api/servers/{id}/delete", async (string id, WebConfirmed request) => Refused(await OnWindow(() => _window.DeleteWebServer(id, request))));
+            api.MapPost("/api/servers/{id}/delete", async (string id, WebConfirmed request) => Refused(await _servers.Run(() => _servers.DeleteWebServer(id, request))));
 
             api.MapGet("/api/servers/{id}/config-file", async (string id) =>
             {
-                string text = await OnWindow(() => _window.GetWebConfigFile(id));
+                string text = await _servers.Run(() => _servers.GetWebConfigFile(id));
                 return text == null ? Results.NotFound() : Results.Json(new { text });
             });
 
-            api.MapPut("/api/servers/{id}/config-file", async (string id, WebCommand body) => Refused(await OnWindow(() => _window.SaveWebConfigFile(id, body?.Text))));
+            api.MapPut("/api/servers/{id}/config-file", async (string id, WebCommand body) => Refused(await _servers.Run(() => _servers.SaveWebConfigFile(id, body?.Text))));
 
             api.MapGet("/api/plugins/search", async (string query, int? page) =>
             {
@@ -197,25 +189,25 @@ namespace ToolCupboard.Web
 
             api.MapGet("/api/servers/{id}/plugins", async (string id) =>
             {
-                RustPlugin[] plugins = await OnWindow(() => _window.GetWebPlugins(id));
+                RustPlugin[] plugins = await _servers.Run(() => _servers.GetWebPlugins(id));
                 return plugins == null ? Results.NotFound() : Results.Json(plugins);
             });
 
             api.MapPost("/api/servers/{id}/plugins/install", async (string id, WebCommand body) =>
             {
-                string error = await OnWindow(() => _window.InstallWebPlugin(id, body?.Text));
+                string error = await _servers.Run(() => _servers.InstallWebPlugin(id, body?.Text));
                 return Refused(error);
             });
 
             api.MapPost("/api/servers/{id}/plugins/{name}/{action}", async (string id, string name, string action) =>
             {
-                bool? done = await OnWindow(() => _window.RunWebPluginAction(id, name, action));
+                bool? done = await _servers.Run(() => _servers.RunWebPluginAction(id, name, action));
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
             api.MapGet("/api/servers/{id}/players", async (string id) =>
             {
-                RustRcon rcon = await OnWindow(() => _window.GetWebRcon(id));
+                RustRcon rcon = await _servers.Run(() => _servers.GetWebRcon(id));
                 if (rcon == null || !rcon.IsConnected) { return Results.Conflict(); }
 
                 var players = await rcon.GetPlayersAsync();
@@ -224,7 +216,7 @@ namespace ToolCupboard.Web
 
             api.MapPost("/api/servers/{id}/players/{steamId}/{action}", async (string id, string steamId, string action, WebCommand body) =>
             {
-                RustRcon rcon = await OnWindow(() => _window.GetWebRcon(id));
+                RustRcon rcon = await _servers.Run(() => _servers.GetWebRcon(id));
                 if (rcon == null || !rcon.IsConnected) { return Results.Conflict(); }
 
                 // Checked against the live list, the id goes into a server command
@@ -235,7 +227,7 @@ namespace ToolCupboard.Web
                 else if (action == "ban") { await rcon.BanAsync(player, body?.Text); }
                 else { return Results.NotFound(); }
 
-                await OnWindow(() => { _window.Log(id, $"Player: {action} {player.DisplayName} ({player.SteamID}) from the web UI"); return true; });
+                await _servers.Run(() => { _servers.Log(id, $"Player: {action} {player.DisplayName} ({player.SteamID}) from the web UI"); return true; });
                 return Results.Ok();
             });
         }

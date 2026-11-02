@@ -1,21 +1,23 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using Discord;
 using Discord.WebSocket;
+using ToolCupboard.Functions;
 
 namespace ToolCupboard.DiscordBot
 {
-	class Bot
+	public class Bot
 	{
 		private const int READY_TIMEOUT_SECONDS = 15;
 
+		private readonly ServerManager _servers;
 		private DiscordSocketClient _client;
 		private CancellationTokenSource _cancellationTokenSource;
 
-		public Bot()
+		public Bot(ServerManager servers)
 		{
+			_servers = servers;
 			Configs.CreateConfigs();
 		}
 
@@ -48,7 +50,7 @@ namespace ToolCupboard.DiscordBot
 			}
 
 			// Listen Commands
-			new Commands(_client);
+			new Commands(_client, _servers);
 
 			return true;
 		}
@@ -71,12 +73,12 @@ namespace ToolCupboard.DiscordBot
 			{
 				while (!token.IsCancellationRequested)
 				{
-					if (Application.Current != null)
+					if (_servers != null)
 					{
-						await Application.Current.Dispatcher.Invoke(async () =>
+						await _servers.Run(async () =>
 						{
-							MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
-							int serverCount = ToolCupboard.ServerGrid.Items.Count;
+							ServerManager ToolCupboard = _servers;
+							int serverCount = ToolCupboard.Servers.Count;
 							await _client.SetGameAsync($"{serverCount} Rust server{(serverCount > 1 ? "s" : string.Empty)}");
 						});
 					}

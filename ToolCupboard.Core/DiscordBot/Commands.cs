@@ -1,21 +1,22 @@
-﻿using Discord;
+using Discord;
 using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows;
 using ToolCupboard.Functions;
 
 namespace ToolCupboard.DiscordBot
 {
-    class Commands
+    public class Commands
     {
         private readonly DiscordSocketClient _client;
+        private readonly ServerManager _servers;
 
-        public Commands(DiscordSocketClient client)
+        public Commands(DiscordSocketClient client, ServerManager servers)
         {
             _client = client;
+            _servers = servers;
             _client.MessageReceived += CommandReceivedAsync;
         }
 
@@ -97,9 +98,9 @@ namespace ToolCupboard.DiscordBot
 
         private async Task Action_List(SocketMessage message)
         {
-            await Application.Current.Dispatcher.Invoke(async () =>
+            await _servers.Run(async () =>
             {
-                MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                ServerManager ToolCupboard = _servers;
 
                 var list = ToolCupboard.GetServerList();
 
@@ -128,9 +129,9 @@ namespace ToolCupboard.DiscordBot
             string[] args = command.Split(' ');
             if (args.Length == 2 && int.TryParse(args[1], out int i))
             {
-                await Application.Current.Dispatcher.Invoke(async () =>
+                await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
                         ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
@@ -167,9 +168,9 @@ namespace ToolCupboard.DiscordBot
             string[] args = command.Split(' ');
             if (args.Length == 2 && int.TryParse(args[1], out int i))
             {
-                await Application.Current.Dispatcher.Invoke(async () =>
+                await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
                         ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
@@ -206,9 +207,9 @@ namespace ToolCupboard.DiscordBot
             string[] args = command.Split(' ');
             if (args.Length == 2 && int.TryParse(args[1], out int i))
             {
-                await Application.Current.Dispatcher.Invoke(async () =>
+                await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
                         ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
@@ -241,9 +242,9 @@ namespace ToolCupboard.DiscordBot
             string[] args = command.Split(' ');
             if (args.Length >= 2 && int.TryParse(args[1], out int i))
             {
-                await Application.Current.Dispatcher.Invoke(async () =>
+                await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
                         ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
@@ -275,9 +276,9 @@ namespace ToolCupboard.DiscordBot
             string[] args = command.Split(' ');
             if (args.Length >= 2 && int.TryParse(args[1], out int i))
             {
-                await Application.Current.Dispatcher.Invoke(async () =>
+                await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
                         ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
@@ -313,9 +314,9 @@ namespace ToolCupboard.DiscordBot
             string[] args = command.Split(' ');
             if (args.Length >= 2 && int.TryParse(args[1], out int i))
             {
-                await Application.Current.Dispatcher.Invoke(async () =>
+                await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     if (ToolCupboard.IsServerExist(args[1]))
                     {
                         ServerStatus serverStatus = ToolCupboard.GetServerStatus(args[1]);
@@ -406,11 +407,11 @@ namespace ToolCupboard.DiscordBot
 
         private async Task<(int, int, int)> GetGameServerDashBoardDetails()
         {
-            if (Application.Current != null)
+            if (_servers != null)
             {
-                return await Application.Current.Dispatcher.Invoke(async () =>
+                return await _servers.Run(async () =>
                 {
-                    MainWindow ToolCupboard = (MainWindow)Application.Current.MainWindow;
+                    ServerManager ToolCupboard = _servers;
                     return (ToolCupboard.GetServerCount(), ToolCupboard.GetStartedServerCount(), ToolCupboard.GetActivePlayers());
                 });
             }
@@ -434,11 +435,11 @@ namespace ToolCupboard.DiscordBot
             embed.AddField("Disk: " + SystemMetrics.GetDiskRatioString(diskUsage, system.DiskTotalSize), GetProgressBar(diskUsage), true);
 
             (int serverCount, int startedCount, int activePlayers) = await GetGameServerDashBoardDetails();
-            embed.AddField($"Servers: {serverCount}/{MainWindow.MAX_SERVER}", GetProgressBar(serverCount * 100 / MainWindow.MAX_SERVER), true);
+            embed.AddField($"Servers: {serverCount}/{AppInfo.MaxServers}", GetProgressBar(serverCount * 100 / AppInfo.MaxServers), true);
             embed.AddField($"Online: {startedCount}/{serverCount}", GetProgressBar((serverCount == 0) ? 0 : startedCount * 100 / serverCount), true);
             embed.AddField("Active Players", GetActivePlayersString(activePlayers), true);
 
-            embed.WithFooter(new EmbedFooterBuilder().WithIconUrl(DiscordWebhook.LogoUrl).WithText($"ToolCupboard {MainWindow.APP_VERSION} | System Metrics"));
+            embed.WithFooter(new EmbedFooterBuilder().WithIconUrl(DiscordWebhook.LogoUrl).WithText($"ToolCupboard {AppInfo.Version} | System Metrics"));
             embed.WithCurrentTimestamp();
 
             return embed;

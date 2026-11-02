@@ -60,7 +60,6 @@ namespace ToolCupboard
         public static readonly string DEFAULT_THEME = "Cyan";
 
         private readonly NotifyIcon notifyIcon;
-        private Process Installer;
 
         private readonly ServerManager g_Servers;
         public Dictionary<int, ServerMetadata> _serverMetadata => g_Servers._serverMetadata;
@@ -68,14 +67,7 @@ namespace ToolCupboard
 
 
         private readonly List<System.Windows.Controls.CheckBox> _checkBoxes = new List<System.Windows.Controls.CheckBox>();
-
-
-        private readonly DiscordBot.Bot g_DiscordBot = new DiscordBot.Bot();
         private Web.WebServer g_WebServer;
-        private bool g_WebJobRunning;
-        private string g_WebJobKind = string.Empty;
-        private string g_WebJobError;
-        private readonly List<string> g_WebJobLog = new List<string>();
         private string g_UmodQuery = string.Empty;
         private int g_UmodPage = 1;
         private int g_UmodLastPage = 1;
@@ -85,7 +77,10 @@ namespace ToolCupboard
             g_Servers = new ServerManager(new System.Windows.Threading.DispatcherSynchronizationContext(Dispatcher));
             g_Servers.Logged += ShowLogLine;
             g_Servers.ServerChanged += RefreshServerRow;
-            g_Servers.TableChanged += LoadServerTable;
+            g_Servers.TableChanged += ShowServers;
+            g_Servers.DiscordLogged += ShowDiscordLogLine;
+            g_Servers.BotChanged += ShowBotState;
+            g_Servers.OptionsChanged += ShowOptions;
             g_Servers.StatusChanged += DataGrid_RefreshElements;
 
             //Add SplashScreen
@@ -100,16 +95,6 @@ namespace ToolCupboard
 
             // Add all themes to comboBox_Themes
             ThemeManager.Current.Themes.Select(t => Path.GetExtension(t.Name).Trim('.')).Distinct().OrderBy(x => x).ToList().ForEach(delegate (string name) { comboBox_Themes.Items.Add(name); });
-
-            // Set up _serverMetadata
-            for (int i = 0; i < MAX_SERVER; i++)
-            {
-                _serverMetadata[i] = new ServerMetadata
-                {
-                    ServerStatus = ServerStatus.Stopped,
-                    ServerConsole = new ServerConsole(i)
-                };
-            }
 
             var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\ToolCupboard");
             if (key == null)
@@ -230,47 +215,7 @@ namespace ToolCupboard
                 ServerGrid.SelectedItem = ServerGrid.Items[0];
             }
 
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
-            {
-                int pid = ServerCache.GetPID(server.ID);
-                if (pid != -1)
-                {
-                    Process p = null;
-                    try
-                    {
-                        p = Process.GetProcessById(pid);
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-
-                    string pName = ServerCache.GetProcessName(server.ID);
-                    if (!string.IsNullOrWhiteSpace(pName) && p.ProcessName == pName)
-                    {
-                        _serverMetadata[int.Parse(server.ID)].Process = p;
-                        _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Started;
-                        g_Servers.SetServerStatus(server, "Started");
-
-                        /*// Get Console process - untested
-                        Process console = GetConsoleProcess(pid);
-                        if (console != null)
-                        {
-                            ReadConsoleOutput(server.ID, console);
-                        }
-                        */
-
-                        _serverMetadata[int.Parse(server.ID)].MainWindow = ServerCache.GetWindowsIntPtr(server.ID);
-                        p.Exited += (sender, e) => g_Servers.OnGameServerExited(server);
-
-                        g_Servers.StartAutoUpdateCheck(server);
-                        g_Servers.StartRestartCrontabCheck(server);
-                        g_Servers.StartWipeCrontabCheck(server);
-                        g_Servers.StartQuery(server);
-                        g_Servers.StartRcon(server, p);
-                    }
-                }
-            }
+            g_Servers.ReattachServers();
 
             if (showCrashHint)
             {
@@ -278,10 +223,7 @@ namespace ToolCupboard
                 Log("System", $"ToolCupboard crashed unexpectedly, please view the crash log {logFile}");
             }
 
-            AutoStartServer();
-
-            ServerConsole.OutputReceived += (serverId, line) => Dispatcher.Invoke(() => _serverMetadata[int.Parse(serverId)].ServerConsole.Add(line));
-
+            g_Servers.AutoStartServer();
             StartConsoleRefresh();
 
             StartWebServer();
@@ -328,164 +270,6 @@ namespace ToolCupboard
                     });
                 }
             });
-        }
-
-        public void LoadServerTable()
-        {
-            string[] livePlayerData = new string[MAX_SERVER + 1];
-            foreach (ServerTable item in ServerGrid.Items)
-            {
-                livePlayerData[int.Parse(item.ID)] = item.Maxplayers;
-            }
-
-            var selectedrow = (ServerTable)ServerGrid.SelectedItem;
-            ServerGrid.Items.Clear();
-
-            //Add server to datagrid
-            for (int i = 1; i <= MAX_SERVER; i++)
-            {
-                string serverid_path = Path.Combine(APP_PATH, "servers", i.ToString());
-                if (!Directory.Exists(serverid_path)) { continue; }
-
-                string configpath = ServerPath.GetServersConfigs(i.ToString(), "ToolCupboard.cfg");
-                if (!File.Exists(configpath)) { continue; }
-
-                var serverConfig = new ServerConfig(i.ToString());
-
-                //If Game server not exist return
-                if (GameServer.Data.Class.Get(serverConfig.ServerGame) == null) { continue; }
-
-                string status;
-                switch (GetServerMetadata(i).ServerStatus)
-                {
-                    case ServerStatus.Started: status = "Started"; break;
-                    case ServerStatus.Starting: status = "Starting"; break;
-                    case ServerStatus.Stopped: status = "Stopped"; break;
-                    case ServerStatus.Stopping: status = "Stopping"; break;
-                    case ServerStatus.Restarted: status = "Restarted"; break;
-                    case ServerStatus.Restarting: status = "Restarting"; break;
-                    case ServerStatus.Updated: status = "Updated"; break;
-                    case ServerStatus.Updating: status = "Updating"; break;
-                    case ServerStatus.Backuped: status = "Backuped"; break;
-                    case ServerStatus.Backuping: status = "Backuping"; break;
-                    case ServerStatus.Restored: status = "Restored"; break;
-                    case ServerStatus.Restoring: status = "Restoring"; break;
-                    case ServerStatus.Deleting: status = "Deleting"; break;
-                    default:
-                        {
-                            _serverMetadata[i].ServerStatus = ServerStatus.Stopped;
-                            status = "Stopped";
-                            break;
-                        }
-                }
-
-                try
-                {
-                    string icon = "/ToolCupboard;component/Images/ToolCupboard.png";
-                    string serverId = i.ToString();
-                    string pidString = string.Empty;
-
-                    try
-                    {
-                        pidString = Process.GetProcessById(ServerCache.GetPID(serverId)).Id.ToString();
-                    }
-                    catch { }
-
-                    var server = new ServerTable
-                    {
-                        ID = i.ToString(),
-                        PID = pidString,
-                        Game = serverConfig.ServerGame,
-                        Icon = icon,
-                        Status = status,
-                        Framework = RustMods.Detect(i.ToString()).ToString(),
-                        Name = serverConfig.ServerName,
-                        IP = serverConfig.ServerIP,
-                        Port = serverConfig.ServerPort,
-                        QueryPort = serverConfig.ServerQueryPort,
-                        Defaultmap = serverConfig.ServerMap,
-                        Maxplayers = (GetServerMetadata(i).ServerStatus != ServerStatus.Started) ? serverConfig.ServerMaxPlayer : livePlayerData[i]
-                    };
-
-                    SaveServerConfigToServerMetadata(i, serverConfig);
-                    ServerGrid.Items.Add(server);
-
-                    if (selectedrow != null)
-                    {
-                        if (selectedrow.ID == server.ID)
-                        {
-                            ServerGrid.SelectedItem = server;
-                        }
-                    }
-                }
-                catch
-                {
-                    // ignore
-                }
-            }
-
-            grid_action.Visibility = (ServerGrid.Items.Count != 0) ? Visibility.Visible : Visibility.Hidden;
-            label_select.Visibility = grid_action.Visibility == Visibility.Hidden ? Visibility.Visible : Visibility.Hidden;
-        }
-
-        private void SaveServerConfigToServerMetadata(object serverId, ServerConfig serverConfig)
-        {
-            int i = int.Parse(serverId.ToString());
-
-            // Basic Game Server Settings
-            _serverMetadata[i].AutoRestart = serverConfig.AutoRestart;
-            _serverMetadata[i].AutoStart = serverConfig.AutoStart;
-            _serverMetadata[i].AutoUpdate = serverConfig.AutoUpdate;
-            _serverMetadata[i].UpdateOnStart = serverConfig.UpdateOnStart;
-            _serverMetadata[i].BackupOnStart = serverConfig.BackupOnStart;
-
-            // Discord Alert Settings
-            _serverMetadata[i].DiscordAlert = serverConfig.DiscordAlert;
-            _serverMetadata[i].DiscordMessage = serverConfig.DiscordMessage;
-            _serverMetadata[i].DiscordWebhook = serverConfig.DiscordWebhook;
-            _serverMetadata[i].AutoRestartAlert = serverConfig.AutoRestartAlert;
-            _serverMetadata[i].AutoStartAlert = serverConfig.AutoStartAlert;
-            _serverMetadata[i].AutoUpdateAlert = serverConfig.AutoUpdateAlert;
-            _serverMetadata[i].RestartCrontabAlert = serverConfig.RestartCrontabAlert;
-            _serverMetadata[i].CrashAlert = serverConfig.CrashAlert;
-
-            // Restart Crontab Settings
-            _serverMetadata[i].RestartCrontab = serverConfig.RestartCrontab;
-            _serverMetadata[i].WipeCrontab = serverConfig.WipeCrontab;
-            _serverMetadata[i].WipeCrontabFormat = serverConfig.WipeCrontabFormat;
-            _serverMetadata[i].WipeType = serverConfig.WipeType;
-            _serverMetadata[i].WipeNewSeed = serverConfig.WipeNewSeed;
-            _serverMetadata[i].WipeLast = serverConfig.WipeLast;
-            _serverMetadata[i].CrontabFormat = serverConfig.CrontabFormat;
-
-            // Game Server Start Priority and Affinity
-            _serverMetadata[i].CPUPriority = serverConfig.CPUPriority;
-            _serverMetadata[i].CPUAffinity = serverConfig.CPUAffinity;
-
-            _serverMetadata[i].EmbedConsole = serverConfig.EmbedConsole;
-            _serverMetadata[i].AutoScroll = serverConfig.AutoScroll;
-        }
-
-        private async void AutoStartServer()
-        {
-            foreach (ServerTable server in ServerGrid.Items.Cast<ServerTable>().ToList())
-            {
-                int serverId = int.Parse(server.ID);
-
-                if (GetServerMetadata(serverId).AutoStart && GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
-                {
-                    await g_Servers.GameServer_Start(server, " | Auto Start");
-
-                    if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started)
-                    {
-                        if (GetServerMetadata(serverId).DiscordAlert && GetServerMetadata(serverId).AutoStartAlert)
-                        {
-                            var webhook = new DiscordWebhook(GetServerMetadata(serverId).DiscordWebhook, GetServerMetadata(serverId).DiscordMessage);
-                            await webhook.Send(server.ID, server.Game, "Started | Auto Start", server.Name, server.IP, server.Port);
-                        }
-                    }
-                }
-            }
         }
 
         private async void StartServerTableRefresh()
@@ -569,28 +353,18 @@ namespace ToolCupboard
                 dashboard_servers_usage.Content = $"{string.Format("{0:0.00}", dashboard_servers_bar.Value)}%";
                 dashboard_servers_ratio.Content = $"{ServerGrid.Items.Count}/{MAX_SERVER}";
 
-                int startedCount = GetStartedServerCount();
+                int startedCount = g_Servers.GetStartedServerCount();
                 dashboard_started_bar.Value = ServerGrid.Items.Count == 0 ? 0 : startedCount * 100.0 / ServerGrid.Items.Count;
                 dashboard_started_bar.Value = (dashboard_started_bar.Value > 100.0) ? 100.0 : dashboard_started_bar.Value;
                 dashboard_started_usage.Content = $"{string.Format("{0:0.00}", dashboard_started_bar.Value)}%";
                 dashboard_started_ratio.Content = $"{startedCount}/{ServerGrid.Items.Count}";
 
-                dashboard_players_count.Content = GetActivePlayers().ToString();
+                dashboard_players_count.Content = g_Servers.GetActivePlayers().ToString();
 
                 Refresh_DashBoard_LiveChart();
 
                 await Task.Delay(2000);
             }
-        }
-
-        public int GetStartedServerCount()
-        {
-            return ServerGrid.Items.Cast<ServerTable>().Where(s => s.Status == "Started").Count();
-        }
-
-        public int GetActivePlayers()
-        {
-            return ServerGrid.Items.Cast<ServerTable>().Where(s => s.Maxplayers != null && s.Maxplayers.Contains('/')).Sum(s => int.TryParse(s.Maxplayers.Split('/')[0], out int count) ? count : 0);
         }
 
         private void Refresh_DashBoard_LiveChart()
@@ -654,7 +428,7 @@ namespace ToolCupboard
             notifyIcon.Dispose();
 
             // Stop Discord Bot
-            g_DiscordBot.Stop().ConfigureAwait(false);
+            g_Servers.Bot.Stop().ConfigureAwait(false);
 
             g_WebServer?.Stop().ConfigureAwait(false);
         }
@@ -790,7 +564,7 @@ namespace ToolCupboard
 
         private async void Button_Install_Click(object sender, RoutedEventArgs e)
         {
-            if (g_WebJobRunning)
+            if (g_Servers.InstallBusy)
             {
                 await this.ShowMessageAsync("Install Server", "The web UI is already installing or importing a server.");
                 return;
@@ -805,7 +579,7 @@ namespace ToolCupboard
             button_Install.IsEnabled = false;
             textbox_InstallLog.Text = string.Empty;
 
-            string error = await InstallServer(textbox_InstallServerName.Text, line =>
+            string error = await g_Servers.InstallServer(textbox_InstallServerName.Text, line =>
             {
                 textbox_InstallLog.AppendText(line + Environment.NewLine);
                 textbox_InstallLog.ScrollToEnd();
@@ -824,86 +598,6 @@ namespace ToolCupboard
                 button_Install.IsEnabled = true;
             }
         }
-
-        private List<string> UsedPorts() => ServerGrid.Items.Cast<ServerTable>().Select(server => server.Port).ToList();
-
-        // Shared by the install panel and the web UI. Returns null when installed, otherwise the reason it failed
-        private async Task<string> InstallServer(string servername, Action<string> onLine)
-        {
-            if (Installer != null)
-            {
-                if (!Installer.HasExited) { Installer.Kill(); }
-                Installer = null;
-            }
-
-            var newServerConfig = new ServerConfig(null);
-            if (newServerConfig.ServerID == null) { return "The maximum number of servers is reached."; }
-
-            string installPath = ServerPath.GetServersServerFiles(newServerConfig.ServerID);
-            if (Directory.Exists(installPath))
-            {
-                try
-                {
-                    Directory.Delete(installPath, true);
-                }
-                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                {
-                    return $"{installPath} is not accessible!";
-                }
-            }
-
-            Directory.CreateDirectory(installPath);
-
-            string servergame = GameServer.RUST.FullName;
-            newServerConfig.CreateServerDirectory();
-
-            dynamic gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
-            Installer = await gameServer.Install();
-
-            if (Installer != null)
-            {
-                //Wait installer exit. Example: steamcmd.exe
-                await Task.Run(() =>
-                {
-                    var reader = Installer.StandardOutput;
-                    while (!reader.EndOfStream)
-                    {
-                        var nextLine = reader.ReadLine();
-                        System.Windows.Application.Current.Dispatcher.Invoke(() => onLine(nextLine));
-                    }
-
-                    Installer?.WaitForExit();
-                });
-            }
-
-            if (!gameServer.IsInstallValid())
-            {
-                return Installer != null ? $"Fail to install [ERROR] Exit code: {Installer.ExitCode}" : $"Fail to install [ERROR] {gameServer.Error}";
-            }
-
-            newServerConfig.ServerIP = newServerConfig.GetIPAddress();
-            newServerConfig.ServerPort = newServerConfig.GetAvailablePort((string)gameServer.Port, (int)gameServer.PortIncrements, UsedPorts());
-
-            // Create ToolCupboard.cfg
-            newServerConfig.SetData(servergame, servername, gameServer, UsedPorts());
-            newServerConfig.CreateToolCupboardConfig();
-
-            // Create ToolCupboard.cfg and game server config
-            try
-            {
-                gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
-                gameServer.CreateServerCFG();
-            }
-            catch
-            {
-                // ignore
-            }
-
-            LoadServerTable();
-            Log(newServerConfig.ServerID, "Install: Success");
-            return null;
-        }
-
         private void Import_Click(object sender, RoutedEventArgs e)
         {
             if (ServerGrid.Items.Count >= MAX_SERVER)
@@ -928,7 +622,7 @@ namespace ToolCupboard
 
         private async void Button_Import_Click(object sender, RoutedEventArgs e)
         {
-            if (g_WebJobRunning)
+            if (g_Servers.InstallBusy)
             {
                 await this.ShowMessageAsync("Import Server", "The web UI is already installing or importing a server.");
                 return;
@@ -944,7 +638,7 @@ namespace ToolCupboard
             textblock_ImportProgress.Text = "Importing";
             label_ServerDirWarn.Content = string.Empty;
 
-            string error = await ImportServer(textbox_ImportServerName.Text, textbox_ServerDir.Text);
+            string error = await g_Servers.ImportServer(textbox_ImportServerName.Text, textbox_ServerDir.Text);
 
             textbox_ImportServerName.IsEnabled = true;
             textbox_ServerDir.IsEnabled = true;
@@ -957,59 +651,6 @@ namespace ToolCupboard
             {
                 MahAppFlyout_ImportGameServer.IsOpen = false;
             }
-        }
-
-        // Shared by the import panel and the web UI. Returns null when imported, otherwise the reason it failed
-        private async Task<string> ImportServer(string servername, string sourcePath)
-        {
-            if (!Directory.Exists(sourcePath)) { return "Server Dir is invalid"; }
-
-            string servergame = GameServer.RUST.FullName;
-            var newServerConfig = new ServerConfig(null);
-            if (newServerConfig.ServerID == null) { return "The maximum number of servers is reached."; }
-
-            dynamic gameServer = GameServer.Data.Class.Get(servergame, newServerConfig);
-            if (!gameServer.IsImportValid(sourcePath)) { return gameServer.Error; }
-
-            string importPath = ServerPath.GetServersServerFiles(newServerConfig.ServerID);
-            if (Directory.Exists(importPath))
-            {
-                try
-                {
-                    Directory.Delete(importPath, true);
-                }
-                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                {
-                    return $"{importPath} is not accessible!";
-                }
-            }
-
-            string importLog = await Task.Run(() =>
-            {
-                try
-                {
-                    // Copied, because a move can lose files and fails across drives
-                    Microsoft.VisualBasic.FileIO.FileSystem.CopyDirectory(sourcePath, importPath);
-                    return null;
-                }
-                catch (Exception ex)
-                {
-                    return ex.Message;
-                }
-            });
-
-            if (importLog != null)
-            {
-                return $"Fail to copy the directory. {importLog}";
-            }
-
-            // Create ToolCupboard.cfg
-            newServerConfig.SetData(servergame, servername, gameServer, UsedPorts());
-            newServerConfig.CreateToolCupboardConfig();
-
-            LoadServerTable();
-            Log(newServerConfig.ServerID, "Import: Success");
-            return null;
         }
 
         private void Button_Browse_Click(object sender, RoutedEventArgs e)
@@ -1133,7 +774,7 @@ namespace ToolCupboard
         {
             try
             {
-                g_WebServer = new Web.WebServer(this);
+                g_WebServer = new Web.WebServer(g_Servers);
                 await g_WebServer.Start();
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is InvalidOperationException)
@@ -1154,500 +795,6 @@ namespace ToolCupboard
             ProcessManagement.OpenShell(g_WebServer.Url);
         }
 
-        public object[] GetWebServers()
-        {
-            return ServerGrid.Items.Cast<ServerTable>().Select(server => (object)new
-            {
-                id = server.ID,
-                name = server.Name,
-                status = server.Status,
-                framework = RustMods.Detect(server.ID).ToString(),
-                ip = server.IP,
-                port = server.Port,
-                map = server.Defaultmap,
-                players = server.Maxplayers,
-                uptime = server.Uptime
-            }).ToArray();
-        }
-
-        // Returns null for an unknown server or action, and false if the server is in the wrong state
-        public async Task<bool?> RunWebAction(string serverId, string action)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return null; }
-
-            ServerStatus status = GetServerMetadata(server.ID).ServerStatus;
-            bool stopped = status == ServerStatus.Stopped;
-            bool started = status == ServerStatus.Started;
-
-            switch (action)
-            {
-                case "start": if (!stopped) { return false; } await g_Servers.GameServer_Start(server); return true;
-                case "stop": if (!started) { return false; } await g_Servers.GameServer_Stop(server); return true;
-                case "restart": if (!started) { return false; } await g_Servers.GameServer_Restart(server); return true;
-                case "update": if (!stopped) { return false; } await g_Servers.GameServer_Update(server); return true;
-                case "backup": if (!stopped) { return false; } await g_Servers.GameServer_Backup(server); return true;
-                case "install-oxide": return stopped && await RunWebInstall(server, RustModFramework.Oxide);
-                case "install-carbon": return stopped && await RunWebInstall(server, RustModFramework.Carbon);
-                case "test-webhook":
-                    ServerMetadata metadata = GetServerMetadata(server.ID);
-                    if (!metadata.DiscordAlert || string.IsNullOrWhiteSpace(metadata.DiscordWebhook)) { return false; }
-                    return await new DiscordWebhook(metadata.DiscordWebhook, metadata.DiscordMessage).Send(server.ID, server.Game, "Webhook Test Alert", server.Name, server.IP, server.Port);
-                case "remove-framework":
-                    if (!stopped || RustMods.Detect(server.ID) == RustModFramework.None) { return false; }
-                    await RemoveFramework(server);
-                    return true;
-                default: return null;
-            }
-        }
-
-        private async Task<bool> RunWebInstall(ServerTable server, RustModFramework framework)
-        {
-            string error = await RustMods.Install(server.ID, framework);
-            Log(server.ID, error == null ? $"Mods: {framework} installed" : $"[ERROR] Fail to install {framework}: {error}");
-            server.Framework = RustMods.Detect(server.ID).ToString();
-            ServerGrid.Items.Refresh();
-            return error == null;
-        }
-
-        public Web.WebSettings GetWebSettings(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return null; }
-
-            ServerMetadata metadata = GetServerMetadata(server.ID);
-            return new Web.WebSettings
-            {
-                AutoStart = metadata.AutoStart,
-                AutoRestart = metadata.AutoRestart,
-                AutoUpdate = metadata.AutoUpdate,
-                UpdateOnStart = metadata.UpdateOnStart,
-                BackupOnStart = metadata.BackupOnStart,
-                RestartSchedule = metadata.RestartCrontab,
-                RestartCrontab = metadata.CrontabFormat,
-                WipeSchedule = metadata.WipeCrontab,
-                WipeCrontab = metadata.WipeCrontabFormat,
-                WipeType = metadata.WipeType.ToString(),
-                WipeNewSeed = metadata.WipeNewSeed,
-                NextWipe = CrontabSchedule.TryParse(metadata.WipeCrontabFormat)?.GetNextOccurrence(DateTime.Now).ToString("ddd, MM/dd/yyyy HH:mm"),
-                MaximumBackups = new BackupConfig(server.ID).MaximumBackups,
-                WorldSize = RustConfig.Get(server.ID, "server.worldsize"),
-                Seed = RustConfig.Get(server.ID, "server.seed"),
-                TickRate = RustConfig.Get(server.ID, "server.tickrate"),
-                SaveInterval = RustConfig.Get(server.ID, "server.saveinterval"),
-                Description = RustConfig.Get(server.ID, "server.description"),
-                Url = RustConfig.Get(server.ID, "server.url"),
-                HeaderImage = RustConfig.Get(server.ID, "server.headerimage"),
-                RustPlus = RustConfig.Get(server.ID, "app.port") != "-1",
-                Name = server.Name,
-                Ip = server.IP,
-                Port = server.Port,
-                QueryPort = server.QueryPort,
-                Map = server.Defaultmap,
-                MaxPlayers = new ServerConfig(server.ID).ServerMaxPlayer,
-                Parameters = new ServerConfig(server.ID).ServerParam,
-                CpuPriority = Functions.CPU.Priority.GetPriorityInteger(metadata.CPUPriority),
-                CpuAffinity = Functions.CPU.Affinity.GetAffinityValidatedString(metadata.CPUAffinity),
-                DiscordAlert = metadata.DiscordAlert,
-                DiscordMessage = metadata.DiscordMessage,
-                HasWebhook = !string.IsNullOrWhiteSpace(metadata.DiscordWebhook),
-                AutoStartAlert = metadata.AutoStartAlert,
-                AutoRestartAlert = metadata.AutoRestartAlert,
-                AutoUpdateAlert = metadata.AutoUpdateAlert,
-                RestartCrontabAlert = metadata.RestartCrontabAlert,
-                CrashAlert = metadata.CrashAlert
-            };
-        }
-
-        // Returns null when saved, otherwise the reason it was refused
-        public string SaveWebSettings(string serverId, Web.WebSettings settings)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-
-            if (CrontabSchedule.TryParse(settings.RestartCrontab ?? string.Empty) == null) { return "The restart schedule is not valid."; }
-            if (CrontabSchedule.TryParse(settings.WipeCrontab ?? string.Empty) == null) { return "The wipe schedule is not valid."; }
-            if (!Enum.TryParse(settings.WipeType, out RustWipeType wipeType) || !Enum.IsDefined(typeof(RustWipeType), wipeType)) { return "The wipe type is not valid."; }
-            if (settings.MaximumBackups < 1 || settings.MaximumBackups > 100) { return "Maximum backups must be between 1 and 100."; }
-
-            string serverName = CleanServerName(settings.Name);
-            if (serverName.Length == 0 || serverName.Length > 100) { return "Enter a server name of 100 characters or fewer."; }
-            if (!ServerManager.IsValidIPAddress(settings.Ip)) { return "The IP address is not valid."; }
-            if (!ServerManager.IsValidPort(settings.Port)) { return "The port is not valid."; }
-            if (!ServerManager.IsValidPort(settings.QueryPort)) { return "The query port is not valid."; }
-            if (!IsNumberInRange(settings.MaxPlayers, 1, 1000)) { return "Maximum players must be between 1 and 1000."; }
-            if (settings.CpuPriority < 0 || settings.CpuPriority > 5) { return "The CPU priority is not valid."; }
-            if (settings.CpuAffinity == null || settings.CpuAffinity.Length != Environment.ProcessorCount || settings.CpuAffinity.Any(c => c != '0' && c != '1') || !settings.CpuAffinity.Contains('1')) { return "Keep at least one CPU core selected."; }
-
-            string newWebhook = settings.NewWebhook?.Trim();
-            if (!string.IsNullOrEmpty(newWebhook) && !Web.WebAuth.IsDiscordWebhook(newWebhook)) { return "Enter a Discord webhook URL."; }
-
-            bool identityChanged = serverName != server.Name || settings.Ip != server.IP || settings.Port != server.Port || settings.QueryPort != server.QueryPort;
-            if (identityChanged && GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before changing its name, address, or ports."; }
-
-            string error = SaveServerSettings(server, settings.WorldSize, settings.Seed, settings.TickRate, settings.SaveInterval, settings.Description, settings.Url, settings.HeaderImage, settings.RustPlus);
-            if (error != null) { return error; }
-
-            ServerMetadata metadata = _serverMetadata[int.Parse(server.ID)];
-            void SaveFlag(string name, bool value) => ServerConfig.SetSetting(server.ID, name, value ? "1" : "0");
-
-            metadata.AutoStart = settings.AutoStart; SaveFlag(ServerConfig.SettingName.AutoStart, settings.AutoStart);
-            metadata.AutoRestart = settings.AutoRestart; SaveFlag(ServerConfig.SettingName.AutoRestart, settings.AutoRestart);
-            metadata.AutoUpdate = settings.AutoUpdate; SaveFlag(ServerConfig.SettingName.AutoUpdate, settings.AutoUpdate);
-            metadata.UpdateOnStart = settings.UpdateOnStart; SaveFlag(ServerConfig.SettingName.UpdateOnStart, settings.UpdateOnStart);
-            metadata.BackupOnStart = settings.BackupOnStart; SaveFlag(ServerConfig.SettingName.BackupOnStart, settings.BackupOnStart);
-            metadata.RestartCrontab = settings.RestartSchedule; SaveFlag(ServerConfig.SettingName.RestartCrontab, settings.RestartSchedule);
-            metadata.CrontabFormat = settings.RestartCrontab;
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.CrontabFormat, settings.RestartCrontab);
-
-            // Saving other settings must not push back a wipe that is already due
-            if (metadata.WipeCrontab != settings.WipeSchedule || metadata.WipeCrontabFormat != settings.WipeCrontab)
-            {
-                metadata.WipeLast = DateTime.Now;
-                ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeLast, metadata.WipeLast.ToString("o"));
-            }
-
-            metadata.WipeCrontab = settings.WipeSchedule; SaveFlag(ServerConfig.SettingName.WipeCrontab, settings.WipeSchedule);
-            metadata.WipeCrontabFormat = settings.WipeCrontab;
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeCrontabFormat, settings.WipeCrontab);
-            metadata.WipeType = wipeType;
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.WipeType, wipeType.ToString());
-            metadata.WipeNewSeed = settings.WipeNewSeed; SaveFlag(ServerConfig.SettingName.WipeNewSeed, settings.WipeNewSeed);
-            BackupConfig.SetMaximumBackups(server.ID, settings.MaximumBackups);
-
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerName, serverName);
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerIP, settings.Ip);
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerPort, settings.Port);
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerQueryPort, settings.QueryPort);
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerMap, (settings.Map ?? string.Empty).Replace("\"", "'"));
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerMaxPlayer, settings.MaxPlayers);
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerParam, settings.Parameters ?? string.Empty);
-
-            metadata.DiscordAlert = settings.DiscordAlert; SaveFlag(ServerConfig.SettingName.DiscordAlert, settings.DiscordAlert);
-            metadata.DiscordMessage = (settings.DiscordMessage ?? string.Empty).Replace("\"", "'").Replace("\r", " ").Replace("\n", " ");
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.DiscordMessage, metadata.DiscordMessage);
-            metadata.AutoStartAlert = settings.AutoStartAlert; SaveFlag(ServerConfig.SettingName.AutoStartAlert, settings.AutoStartAlert);
-            metadata.AutoRestartAlert = settings.AutoRestartAlert; SaveFlag(ServerConfig.SettingName.AutoRestartAlert, settings.AutoRestartAlert);
-            metadata.AutoUpdateAlert = settings.AutoUpdateAlert; SaveFlag(ServerConfig.SettingName.AutoUpdateAlert, settings.AutoUpdateAlert);
-            metadata.RestartCrontabAlert = settings.RestartCrontabAlert; SaveFlag(ServerConfig.SettingName.RestartCrontabAlert, settings.RestartCrontabAlert);
-            metadata.CrashAlert = settings.CrashAlert; SaveFlag(ServerConfig.SettingName.CrashAlert, settings.CrashAlert);
-
-            if (settings.ClearWebhook || !string.IsNullOrEmpty(newWebhook))
-            {
-                metadata.DiscordWebhook = settings.ClearWebhook ? string.Empty : newWebhook;
-                ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.DiscordWebhook, metadata.DiscordWebhook);
-            }
-
-            metadata.CPUPriority = settings.CpuPriority.ToString();
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.CPUPriority, metadata.CPUPriority);
-            metadata.CPUAffinity = settings.CpuAffinity;
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.CPUAffinity, metadata.CPUAffinity);
-            if (metadata.Process != null && !metadata.Process.HasExited)
-            {
-                metadata.Process = Functions.CPU.Priority.SetProcessWithPriority(metadata.Process, settings.CpuPriority);
-                metadata.Process.ProcessorAffinity = Functions.CPU.Affinity.GetAffinityIntPtr(metadata.CPUAffinity);
-            }
-
-            LoadServerTable();
-
-            if (ServerGrid.SelectedItem == server) { DataGrid_RefreshElements(); }
-            return null;
-        }
-
-        public object GetWebWipeInfo(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            return server == null ? null : new
-            {
-                map = RustWipe.GetFiles(server.ID, RustWipeType.Map).Count,
-                blueprints = RustWipe.GetFiles(server.ID, RustWipeType.Blueprints).Count,
-                full = RustWipe.GetFiles(server.ID, RustWipeType.Full).Count
-            };
-        }
-
-        // Returns null when wiped, otherwise the reason it was refused
-        public async Task<string> RunWebWipe(string serverId, Web.WebConfirmed request)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-            if (!Web.WebAuth.IsConfirmed(request?.Confirm, server.Name)) { return "The server name did not match."; }
-            if (!Enum.TryParse(request.Type, out RustWipeType type) || !Enum.IsDefined(typeof(RustWipeType), type)) { return "The wipe type is not valid."; }
-            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before wiping it."; }
-
-            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Restoring;
-            g_Servers.SetServerStatus(server, "Wiping");
-            bool wiped = await g_Servers.WipeServerData(server, type, request.NewSeed);
-            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
-            g_Servers.SetServerStatus(server, "Stopped");
-
-            return wiped ? null : "The wipe failed, and the files were put back. Check the log.";
-        }
-
-        public object[] GetWebBackups(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return null; }
-
-            var location = new DirectoryInfo(new BackupConfig(server.ID).BackupLocation);
-            if (!location.Exists) { return Array.Empty<object>(); }
-
-            return location.GetFiles($"ToolCupboard-Backup-Server-{server.ID}-*.zip")
-                .OrderByDescending(file => file.LastWriteTime)
-                .Select(file => (object)new { file = file.Name, sizeMb = Math.Round(file.Length / 1048576.0, 1), created = file.LastWriteTime.ToString("yyyy-MM-dd HH:mm") })
-                .ToArray();
-        }
-
-        // Returns null when restored, otherwise the reason it was refused
-        public async Task<string> RestoreWebBackup(string serverId, Web.WebConfirmed request)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-            if (!Web.WebAuth.IsConfirmed(request?.Confirm, server.Name)) { return "The server name did not match."; }
-            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before restoring a backup."; }
-
-            // Only names from the backup list are accepted, so a path cannot be passed in
-            string backup = new DirectoryInfo(new BackupConfig(server.ID).BackupLocation).GetFiles($"ToolCupboard-Backup-Server-{server.ID}-*.zip").FirstOrDefault(file => file.Name == request.File)?.Name;
-            if (backup == null) { return "That backup does not exist."; }
-
-            return await g_Servers.GameServer_RestoreBackup(server, backup) ? null : "The restore failed, and the server was left as it was. Check the log.";
-        }
-
-        // Returns null when added, otherwise the reason it was refused
-        public string AddWebPlugin(string serverId, Web.WebPluginUpload upload)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-
-            RustModFramework framework = RustMods.Detect(server.ID);
-            if (framework == RustModFramework.None) { return "Install Oxide or Carbon first."; }
-
-            string fileName = upload?.FileName ?? string.Empty;
-            string name = Path.GetFileNameWithoutExtension(fileName);
-            if (!fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || !UmodCatalog.IsValidPluginName(name)) { return "Choose a .cs plugin file with a plain file name."; }
-            if (string.IsNullOrEmpty(upload.Text) || upload.Text.Length > 5 * 1024 * 1024) { return "The plugin file is empty or too large."; }
-
-            RustMods.WritePlugin(server.ID, framework, name, System.Text.Encoding.UTF8.GetBytes(upload.Text));
-            Log(server.ID, $"Mods: Added plugin {name} from the web UI");
-            return null;
-        }
-
-        private static string CleanServerName(string name)
-        {
-            return System.Text.RegularExpressions.Regex.Replace(name ?? string.Empty, "[\"\\r\\n]", "'").Trim();
-        }
-
-        public object GetWebJob()
-        {
-            return new { running = g_WebJobRunning, kind = g_WebJobKind, error = g_WebJobError, lines = g_WebJobLog.ToArray() };
-        }
-
-        // Returns null when the job started, otherwise the reason it was refused
-        public string StartWebJob(string kind, string name, string path)
-        {
-            string serverName = CleanServerName(name);
-            if (serverName.Length == 0 || serverName.Length > 100) { return "Enter a server name of 100 characters or fewer."; }
-            if (ServerGrid.Items.Count >= MAX_SERVER) { return "The maximum number of servers is reached."; }
-            if (g_WebJobRunning || progressbar_InstallProgress.IsIndeterminate || progressbar_ImportProgress.IsIndeterminate) { return "Another install or import is already running."; }
-            if (kind == "import" && string.IsNullOrWhiteSpace(path)) { return "Enter the folder of the existing server."; }
-
-            g_WebJobRunning = true;
-            g_WebJobKind = kind;
-            g_WebJobError = null;
-            g_WebJobLog.Clear();
-            RunWebJob(kind, serverName, path?.Trim());
-            return null;
-        }
-
-        private async void RunWebJob(string kind, string name, string path)
-        {
-            try
-            {
-                g_WebJobError = kind == "import" ? await ImportServer(name, path) : await InstallServer(name, line =>
-                {
-                    g_WebJobLog.Add(line);
-                    if (g_WebJobLog.Count > 300) { g_WebJobLog.RemoveAt(0); }
-                });
-            }
-            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is InvalidOperationException)
-            {
-                g_WebJobError = e.Message;
-            }
-
-            g_WebJobRunning = false;
-        }
-
-        // Returns null when deleted, otherwise the reason it was refused
-        public async Task<string> DeleteWebServer(string serverId, Web.WebConfirmed request)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-            if (!Web.WebAuth.IsConfirmed(request?.Confirm, server.Name)) { return "The server name did not match."; }
-            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before deleting it."; }
-
-            return await g_Servers.GameServer_Delete(server) ? null : "The server could not be deleted. Check the log.";
-        }
-
-        public string GetWebConfigFile(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return null; }
-
-            string path = ServerPath.GetServersServerFiles(server.ID, "server.cfg");
-            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
-        }
-
-        // Returns null when saved, otherwise the reason it was refused
-        public string SaveWebConfigFile(string serverId, string text)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return "Stop the server before editing server.cfg."; }
-            if (text == null || text.Length > 100000) { return "The file is too large."; }
-
-            RustConfig.ReplaceFile(ServerPath.GetServersServerFiles(server.ID, "server.cfg"), text);
-            Log(server.ID, "Settings: server.cfg edited from the web UI");
-            return null;
-        }
-
-        public object GetWebSystem()
-        {
-            object Row(string label, double percent, object detail) => new { label, percent = Math.Round(percent, 1), detail = detail?.ToString() ?? string.Empty };
-
-            return new
-            {
-                version = APP_VERSION,
-                usage = new[]
-                {
-                    Row("CPU", dashboard_cpu_bar.Value, dashboard_cpu_type.Content),
-                    Row("Memory", dashboard_ram_bar.Value, dashboard_ram_ratio.Content),
-                    Row("Disk", dashboard_disk_bar.Value, dashboard_disk_ratio.Content),
-                    Row("Servers", dashboard_servers_bar.Value, dashboard_servers_ratio.Content),
-                    Row("Running", dashboard_started_bar.Value, dashboard_started_ratio.Content)
-                },
-                players = GetActivePlayers(),
-                log = textBox_applog.Text,
-                options = new Web.WebAppOptions { StartOnLogin = MahAppSwitch_StartOnBoot.IsOn, RestartOnCrash = MahAppSwitch_RestartOnCrash.IsOn }
-            };
-        }
-
-        public bool SaveWebOptions(Web.WebAppOptions options)
-        {
-            // The switches save themselves, the same as clicking them
-            MahAppSwitch_StartOnBoot.IsOn = options?.StartOnLogin == true;
-            MahAppSwitch_RestartOnCrash.IsOn = options?.RestartOnCrash == true;
-            return true;
-        }
-
-        public Web.WebDiscord GetWebDiscord()
-        {
-            return new Web.WebDiscord
-            {
-                Running = switch_DiscordBot.IsOn,
-                Busy = !switch_DiscordBot.IsEnabled,
-                HasToken = !string.IsNullOrWhiteSpace(DiscordBot.Configs.GetBotToken()),
-                Prefix = DiscordBot.Configs.GetBotPrefix(),
-                AutoStart = MahAppSwitch_DiscordBotAutoStart.IsOn,
-                Commands = DiscordBot.Configs.GetCommandsList(),
-                InviteLink = switch_DiscordBot.IsOn ? g_DiscordBot.GetInviteLink() : string.Empty,
-                Admins = DiscordBot.Configs.GetBotAdminList().Select(admin => new Web.WebDiscordAdmin { Id = admin.Item1, Servers = admin.Item2 }).ToArray()
-            };
-        }
-
-        // Returns null when saved, otherwise the reason it was refused
-        public string SaveWebDiscord(Web.WebDiscord discord)
-        {
-            string prefix = discord?.Prefix?.Trim() ?? string.Empty;
-            if (prefix.Length > 10 || prefix.Any(char.IsWhiteSpace)) { return "The prefix must be 10 characters or fewer, with no spaces."; }
-
-            var admins = (discord?.Admins ?? Array.Empty<Web.WebDiscordAdmin>()).Select(admin => (admin.Id?.Trim(), admin.Servers?.Replace(" ", string.Empty))).ToList();
-            if (admins.Any(admin => !Web.WebAuth.IsValidDiscordAdmin(admin.Item1, admin.Item2))) { return "Each admin needs a Discord user ID and server IDs like 1,2 or 0 for all."; }
-
-            string token = discord?.NewToken?.Trim();
-            if (!string.IsNullOrEmpty(token) && token.Any(char.IsWhiteSpace)) { return "That bot token is not valid."; }
-
-            DiscordBot.Configs.SetBotPrefix(prefix);
-            if (!string.IsNullOrEmpty(token)) { DiscordBot.Configs.SetBotToken(token); }
-            DiscordBot.Configs.SetBotAdminList(admins);
-            MahAppSwitch_DiscordBotAutoStart.IsOn = discord?.AutoStart == true;
-            Refresh_DiscordBotAdminList();
-            return null;
-        }
-
-        public bool SetWebDiscordRunning(bool running)
-        {
-            if (!switch_DiscordBot.IsEnabled) { return false; }
-
-            // The switch starts or stops the bot, the same as clicking it
-            switch_DiscordBot.IsOn = running;
-            return true;
-        }
-
-        public RustPlugin[] GetWebPlugins(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return null; }
-
-            RustModFramework framework = RustMods.Detect(server.ID);
-            return framework == RustModFramework.None ? Array.Empty<RustPlugin>() : RustMods.GetPlugins(server.ID, framework).ToArray();
-        }
-
-        public async Task<string> InstallWebPlugin(string serverId, string slug)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return "That server does not exist."; }
-
-            string error = await UmodCatalog.Install(server.ID, RustMods.Detect(server.ID), slug);
-            Log(server.ID, error == null ? $"Mods: Installed {slug} from uMod" : $"[ERROR] Fail to install {slug}: {error}");
-            return error;
-        }
-
-        // The name comes from the page, so it must match a plugin that is on disk
-        public async Task<bool?> RunWebPluginAction(string serverId, string name, string action)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null) { return null; }
-
-            RustModFramework framework = RustMods.Detect(server.ID);
-            RustPlugin plugin = framework == RustModFramework.None ? null : RustMods.GetPlugins(server.ID, framework).FirstOrDefault(p => p.Name == name);
-            if (plugin == null) { return null; }
-
-            switch (action)
-            {
-                case "enable": RustMods.SetEnabled(server.ID, framework, plugin, true); break;
-                case "disable": RustMods.SetEnabled(server.ID, framework, plugin, false); break;
-                case "delete": File.Delete(plugin.Path); break;
-                case "reload":
-                    RustRcon rcon = GetServerMetadata(server.ID).Rcon;
-                    if (rcon == null || !rcon.IsConnected) { return false; }
-                    await rcon.SendAsync(RustMods.GetReloadCommand(framework, plugin.Name));
-                    break;
-                default: return null;
-            }
-
-            Log(server.ID, $"Mods: {action} plugin {plugin.Name} from the web UI");
-            return true;
-        }
-
-        public string[] GetWebConsole(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            return server == null ? null : GetServerMetadata(server.ID).ServerConsole.Get().Split(Environment.NewLine);
-        }
-
-        public bool SendWebCommand(string serverId, string command)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            if (server == null || GetServerMetadata(server.ID).Process == null) { return false; }
-
-            g_Servers.SendCommand(server, command);
-            return true;
-        }
-
-        public RustRcon GetWebRcon(string serverId)
-        {
-            ServerTable server = GetServerTableById(serverId);
-            return server == null ? null : GetServerMetadata(server.ID).Rcon;
-        }
         #endregion
 
         #region Server Settings
@@ -1669,43 +816,12 @@ namespace ToolCupboard
             ToggleMahappFlyout(MahAppFlyout_ServerSettings);
         }
 
-        // Returns null when saved, otherwise what is wrong with the values
-        private string SaveServerSettings(ServerTable server, string worldSize, string seed, string tickRate, string saveInterval, string description, string url, string headerImage, bool rustPlus)
-        {
-            if (!IsNumberInRange(worldSize, 1000, 6000)) { return "World size must be between 1000 and 6000"; }
-            if (!IsNumberInRange(seed, 0, int.MaxValue)) { return "Seed must be a positive number"; }
-            if (!IsNumberInRange(tickRate, 10, 100)) { return "Tick rate must be between 10 and 100"; }
-            if (!IsNumberInRange(saveInterval, 60, 3600)) { return "Save interval must be between 60 and 3600 seconds"; }
-
-            RustConfig.Set(server.ID, "server.worldsize", worldSize);
-            RustConfig.Set(server.ID, "server.seed", seed);
-            RustConfig.Set(server.ID, "server.tickrate", tickRate);
-            RustConfig.Set(server.ID, "server.saveinterval", saveInterval);
-            RustConfig.Set(server.ID, "server.description", description ?? string.Empty);
-            RustConfig.Set(server.ID, "server.url", url ?? string.Empty);
-            RustConfig.Set(server.ID, "server.headerimage", headerImage ?? string.Empty);
-
-            // The app port defaults to the highest server port + 67, so only the disabled state is stored
-            if (!rustPlus || RustConfig.Get(server.ID, "app.port") == "-1")
-            {
-                RustConfig.Set(server.ID, "app.port", rustPlus ? (int.Parse(server.Port) + 68).ToString() : "-1");
-            }
-
-            Log(server.ID, "Settings: server.cfg updated");
-            return null;
-        }
-
-        private static bool IsNumberInRange(string text, int min, int max)
-        {
-            return int.TryParse(text, out int value) && value >= min && value <= max;
-        }
-
         private void Button_SettingsSave_Click(object sender, RoutedEventArgs e)
         {
             var server = (ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            string error = SaveServerSettings(server, textBox_SettingWorldSize.Text, textBox_SettingSeed.Text, textBox_SettingTickRate.Text, textBox_SettingSaveInterval.Text,
+            string error = g_Servers.SaveServerSettings(server, textBox_SettingWorldSize.Text, textBox_SettingSeed.Text, textBox_SettingTickRate.Text, textBox_SettingSaveInterval.Text,
                 textBox_SettingDescription.Text, textBox_SettingUrl.Text, textBox_SettingHeaderImage.Text, checkBox_SettingRustPlus.IsChecked == true);
 
             label_SettingsStatus.Content = error ?? "Saved. Changes apply the next time the server starts.";
@@ -1817,7 +933,7 @@ namespace ToolCupboard
 
             ProgressDialogController controller = await this.ShowProgressAsync($"Installing {plugin.Title}...", "Please wait...");
             controller.SetIndeterminate();
-            string error = await InstallWebPlugin(server.ID, plugin.Slug);
+            string error = await g_Servers.InstallWebPlugin(server.ID, plugin.Slug);
             await controller.CloseAsync();
 
             if (error != null)
@@ -1890,26 +1006,8 @@ namespace ToolCupboard
             var result = await this.ShowMessageAsync("Mods and Plugins", $"Remove {framework}? Plugins and their configs are kept.{note}", MessageDialogStyle.AffirmativeAndNegative);
             if (result != MessageDialogResult.Affirmative) { return; }
 
-            await RemoveFramework(server);
+            await g_Servers.RemoveFramework(server);
             RefreshMods();
-        }
-
-        private async Task RemoveFramework(ServerTable server)
-        {
-            RustModFramework framework = RustMods.Detect(server.ID);
-            if (framework == RustModFramework.Carbon)
-            {
-                RustMods.RemoveCarbon(server.ID);
-            }
-            else
-            {
-                RustMods.RemoveOxide(server.ID);
-                await g_Servers.GameServer_Update(server, validate: true);
-            }
-
-            server.Framework = RustMods.Detect(server.ID).ToString();
-            ServerGrid.Items.Refresh();
-            Log(server.ID, $"Mods: {framework} removed");
         }
 
         private void Button_PluginAdd_Click(object sender, RoutedEventArgs e)
@@ -2157,7 +1255,7 @@ namespace ToolCupboard
             if (server == null) { return; }
 
             // Reload ToolCupboard.cfg on start
-            SaveServerConfigToServerMetadata(server.ID, new ServerConfig(server.ID));
+            g_Servers.SaveServerConfigToServerMetadata(server.ID, new ServerConfig(server.ID));
 
             await g_Servers.GameServer_Start(server);
         }
@@ -2352,6 +1450,52 @@ namespace ToolCupboard
         #endregion
 public void Log(string serverId, string logText) => g_Servers.Log(serverId, logText);
 
+        public void LoadServerTable() => g_Servers.ReloadServers();
+
+        private void ShowServers()
+        {
+            var selected = ServerGrid.SelectedItem as ServerTable;
+            ServerGrid.Items.Clear();
+
+            foreach (ServerTable server in g_Servers.Servers)
+            {
+                ServerGrid.Items.Add(server);
+                if (selected != null && selected.ID == server.ID)
+                {
+                    ServerGrid.SelectedItem = server;
+                }
+            }
+
+            grid_action.Visibility = (ServerGrid.Items.Count != 0) ? Visibility.Visible : Visibility.Hidden;
+            label_select.Visibility = grid_action.Visibility == Visibility.Hidden ? Visibility.Visible : Visibility.Hidden;
+        }
+
+        private void ShowDiscordLogLine(string log)
+        {
+            textBox_DiscordBotLog.AppendText(log);
+            textBox_DiscordBotLog.Text = RemovedOldLog(textBox_DiscordBotLog.Text);
+            textBox_DiscordBotLog.ScrollToEnd();
+        }
+
+        private void ShowBotState()
+        {
+            switch_DiscordBot.Toggled -= Switch_DiscordBot_Toggled;
+            switch_DiscordBot.IsOn = g_Servers.BotRunning || g_Servers.BotBusy && switch_DiscordBot.IsOn;
+            switch_DiscordBot.Toggled += Switch_DiscordBot_Toggled;
+            switch_DiscordBot.IsEnabled = !g_Servers.BotBusy;
+            button_DiscordBotInvite.IsEnabled = g_Servers.BotRunning;
+        }
+
+        private void ShowOptions()
+        {
+            if (MahAppSwitch_RestartOnCrash.IsOn != AppOptions.RestartOnCrash) { MahAppSwitch_RestartOnCrash.IsOn = AppOptions.RestartOnCrash; }
+            if (MahAppSwitch_StartOnBoot.IsOn != AppOptions.StartOnLogin) { MahAppSwitch_StartOnBoot.IsOn = AppOptions.StartOnLogin; }
+            if (MahAppSwitch_DiscordBotAutoStart.IsOn != AppOptions.DiscordBotAutoStart) { MahAppSwitch_DiscordBotAutoStart.IsOn = AppOptions.DiscordBotAutoStart; }
+            Refresh_DiscordBotAdminList();
+            textBox_DiscordBotPrefix.Text = DiscordBot.Configs.GetBotPrefix();
+            label_DiscordBotCommands.Content = DiscordBot.Configs.GetCommandsList();
+        }
+
         private void ShowLogLine(string log)
         {
             textBox_applog.AppendText(log);
@@ -2377,20 +1521,6 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
             {
                 textBox_nextcrontab.Text = CrontabSchedule.TryParse(GetServerMetadata(server.ID).CrontabFormat)?.GetNextOccurrence(DateTime.Now).ToString("ddd, MM/dd/yyyy HH:mm:ss");
             }
-        }
-
-        public void DiscordBotLog(string logText)
-        {
-            string log = $"[{DateTime.Now.ToString("MM/dd/yyyy-HH:mm:ss")}] {logText}" + Environment.NewLine;
-            string logPath = ServerPath.GetLogs();
-            Directory.CreateDirectory(logPath);
-
-            string logFile = Path.Combine(logPath, $"L{DateTime.Now.ToString("yyyyMMdd")}-DiscordBot.log");
-            File.AppendAllText(logFile, log);
-
-            textBox_DiscordBotLog.AppendText(log);
-            textBox_DiscordBotLog.Text = RemovedOldLog(textBox_DiscordBotLog.Text);
-            textBox_DiscordBotLog.ScrollToEnd();
         }
 
         private string RemovedOldLog(string logText)
@@ -2511,7 +1641,7 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
                 key?.SetValue(RegistryKeyName.StartOnBoot, MahAppSwitch_StartOnBoot.IsOn.ToString());
             }
 
-            SetStartOnBoot(MahAppSwitch_StartOnBoot.IsOn);
+            AppOptions.SetStartOnLogin(MahAppSwitch_StartOnBoot.IsOn);
         }
 
         private void RestartOnCrash_IsCheckedChanged(object sender, EventArgs e)
@@ -2522,23 +1652,6 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
             }
         }
 
-        private void SetStartOnBoot(bool enable)
-        {
-            string taskName = "ToolCupboard";
-            string appPath = Process.GetCurrentProcess().MainModule.FileName;
-
-            Process schtasks = new Process
-            {
-                StartInfo =
-                {
-                    FileName = "schtasks",
-                    Arguments = enable ? $"/create /tn {taskName} /tr \"{appPath}\" /sc onlogon /rl HIGHEST /f" : $"/delete /tn {taskName} /f",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                }
-            };
-            schtasks.Start();
-        }
         #endregion
 
         #region Theme
@@ -2848,21 +1961,15 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
         #region Discord Bot
         private async void Switch_DiscordBot_Toggled(object sender, RoutedEventArgs e)
         {
-            if (!switch_DiscordBot.IsEnabled) { return; }
+            if (!switch_DiscordBot.IsEnabled || switch_DiscordBot.IsOn == g_Servers.BotRunning) { return; }
 
             if (switch_DiscordBot.IsOn)
             {
-                switch_DiscordBot.IsEnabled = false;
-                button_DiscordBotInvite.IsEnabled = switch_DiscordBot.IsOn = await g_DiscordBot.Start();
-                DiscordBotLog("Discord Bot " + (switch_DiscordBot.IsOn ? "started." : "fail to start. Reason: Bot Token is invalid."));
-                switch_DiscordBot.IsEnabled = true;
+                await g_Servers.StartBot();
             }
             else
             {
-                button_DiscordBotInvite.IsEnabled = switch_DiscordBot.IsEnabled = false;
-                await g_DiscordBot.Stop();
-                DiscordBotLog("Discord Bot stopped.");
-                switch_DiscordBot.IsEnabled = true;
+                await g_Servers.StopBot();
             }
         }
 
@@ -2978,117 +2085,6 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
             listBox_DiscordBotAdminList.SelectedIndex = listBox_DiscordBotAdminList.Items.Count >= 0 ? selectIndex : -1;
         }
 
-        public int GetServerCount()
-        {
-            return ServerGrid.Items.Count;
-        }
-
-        public List<(string, string, string)> GetServerList()
-        {
-            var list = new List<(string, string, string)>();
-
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
-            {
-                var server = (ServerTable)ServerGrid.Items[i];
-                list.Add((server.ID, server.Status, server.Name));
-            }
-
-            return list;
-        }
-
-        public bool IsServerExist(string serverId)
-        {
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
-            {
-                var server = (ServerTable)ServerGrid.Items[i];
-                if (server.ID == serverId) { return true; }
-            }
-
-            return false;
-        }
-
-        public ServerStatus GetServerStatus(string serverId)
-        {
-            return GetServerMetadata(serverId).ServerStatus;
-        }
-
-        public string GetServerName(string serverId)
-        {
-            var server = GetServerTableById(serverId);
-            return server?.Name ?? string.Empty;
-        }
-
-        private ServerTable GetServerTableById(string serverId)
-        {
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
-            {
-                var server = (ServerTable)ServerGrid.Items[i];
-                if (server.ID == serverId) { return server; }
-            }
-
-            return null;
-        }
-
-        public async Task<bool> StartServerById(string serverId, string adminID, string adminName)
-        {
-            var server = GetServerTableById(serverId);
-            if (server == null) { return false; }
-
-            DiscordBotLog($"Discord: Receive START action | {adminName} ({adminID})");
-            await g_Servers.GameServer_Start(server);
-            return GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started;
-        }
-
-        public async Task<bool> StopServerById(string serverId, string adminID, string adminName)
-        {
-            var server = GetServerTableById(serverId);
-            if (server == null) { return false; }
-
-            DiscordBotLog($"Discord: Receive STOP action | {adminName} ({adminID})");
-            await g_Servers.GameServer_Stop(server);
-            return GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped;
-        }
-
-        public async Task<bool> RestartServerById(string serverId, string adminID, string adminName)
-        {
-            var server = GetServerTableById(serverId);
-            if (server == null) { return false; }
-
-            DiscordBotLog($"Discord: Receive RESTART action | {adminName} ({adminID})");
-            await g_Servers.GameServer_Restart(server);
-            return GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started;
-        }
-
-        public async Task<bool> SendCommandById(string serverId, string command, string adminID, string adminName)
-        {
-            var server = GetServerTableById(serverId);
-            if (server == null) { return false; }
-
-            DiscordBotLog($"Discord: Receive SEND action | {adminName} ({adminID}) | {command}");
-            g_Servers.SendCommand(server, command);
-            return true;
-        }
-
-        public async Task<bool> BackupServerById(string serverId, string adminID, string adminName)
-        {
-            var server = GetServerTableById(serverId);
-            if (server == null) { return false; }
-
-            DiscordBotLog($"Discord: Receive BACKUP action | {adminName} ({adminID})");
-            await g_Servers.GameServer_Backup(server);
-            return GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped;
-        }
-
-        public async Task<bool> UpdateServerById(string serverId, string adminID, string adminName)
-        {
-            var server = GetServerTableById(serverId);
-            if (server == null) { return false; }
-
-            DiscordBotLog($"Discord: Receive UPDATE action | {adminName} ({adminID})");
-            await g_Servers.GameServer_Update(server);
-            return GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped;
-        }
-
         private void Switch_DiscordBotAutoStart_Click(object sender, RoutedEventArgs e)
         {
             using (var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\ToolCupboard", true))
@@ -3099,10 +2095,10 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
 
         private void Button_DiscordBotInvite_Click(object sender, RoutedEventArgs e)
         {
-            string inviteLink = g_DiscordBot.GetInviteLink();
+            string inviteLink = g_Servers.Bot.GetInviteLink();
             if (!string.IsNullOrWhiteSpace(inviteLink))
             {
-                Functions.ProcessManagement.OpenShell(g_DiscordBot.GetInviteLink());
+                Functions.ProcessManagement.OpenShell(g_Servers.Bot.GetInviteLink());
             }
         }
         #endregion

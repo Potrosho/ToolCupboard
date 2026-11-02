@@ -5,7 +5,7 @@ using ToolCupboard.Functions;
 
 namespace ToolCupboard.DiscordBot
 {
-    static class Configs
+    public static class Configs
     {
 		private static readonly string _botPath = ServerPath.Get(ServerPath.FolderName.Configs, "discordbot");
 
