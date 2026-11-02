@@ -9,14 +9,14 @@ Both editions do the same job and are built from the same code. Pick one.
 
 | Edition | Download | What you get |
 | ------- | -------- | ------------ |
-| **Desktop** | `ToolCupboard-Desktop-win-x64.zip` | The Windows app, plus the web dashboard. |
-| **Web** | `ToolCupboard-Web-win-x64.zip` | A small tray program and the web dashboard, with no app window. |
+| **Desktop** | `ToolCupboard.exe` | The Windows app, plus the web dashboard. |
+| **Web** | `ToolCupboardWeb.exe` | A small tray program and the web dashboard, with no app window. |
 
 ## Install
 Requires 64-bit Windows. You do not need to install .NET.
 
-1. Unzip the edition you want to a folder you will keep. Your servers, backups, and settings are stored in that folder.
-2. Run `ToolCupboard.exe` (Desktop) or `ToolCupboardWeb.exe` (Web) and accept the administrator prompt.
+1. Download the edition you want from [Releases](https://github.com/Potrosho/ToolCupboard/releases) and put it in its own folder that you will keep. Your servers, backups, and settings are stored in that folder.
+2. Run it and accept the administrator prompt. The exe is not code signed, so Windows may warn you first. Click **More info**, then **Run anyway**.
 
 The Web edition opens the dashboard in your browser. Click its tray icon to open it again, or right-click the icon to exit. In the Desktop edition, click **Web UI**.
 
@@ -64,7 +64,7 @@ dotnet build ToolCupboard.sln
 | `ToolCupboard.Web` | The Web edition. |
 | `ToolCupboard.Tests` | Unit tests. |
 
-To build both download zips into `dist\`:
+To build both download exes into `dist\`:
 
 ```bash
 powershell -ExecutionPolicy Bypass -File publish.ps1
