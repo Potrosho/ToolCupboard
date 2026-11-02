@@ -2,7 +2,7 @@
 
 ToolCupboard is a Windows manager for Rust dedicated servers. It installs, imports, starts, stops, restarts, updates, wipes, and backs up servers, and can be controlled remotely through Discord.
 
-**Status: early release.** Server management, backups, and scheduled restarts, wipes, and update checks have been tested on a real Rust server with no players on it.
+**Status: early release.** Server management, backups, and scheduled restarts, wipes, and update checks have been tested on a real Rust server, including with a player on it.
 
 ## Editions
 Both editions do the same job and are built from the same code. Pick one.
