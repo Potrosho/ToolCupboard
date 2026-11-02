@@ -6,7 +6,6 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>ToolCupboard</RootNamespace>
     <AssemblyName>ToolCupboardWeb</AssemblyName>
-    <Version>0.1.0</Version>
     <ApplicationIcon>..\ToolCupboard\Images\ToolCupboard.ico</ApplicationIcon>
     <ApplicationManifest>..\ToolCupboard\app.manifest</ApplicationManifest>
     <Nullable>disable</Nullable>

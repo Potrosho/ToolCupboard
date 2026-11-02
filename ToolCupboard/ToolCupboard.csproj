@@ -7,7 +7,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>ToolCupboard</RootNamespace>
     <AssemblyName>ToolCupboard</AssemblyName>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Description>A Rust dedicated server manager for Windows</Description>
     <ApplicationIcon>Images\ToolCupboard.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <StartupObject>ToolCupboard.Program</StartupObject>

@@ -287,8 +287,16 @@ namespace ToolCupboard.Functions
             else if (p != null) // p stores process of steamcmd
             {
                 await Task.Run(() => { p.WaitForExit(); });
-                Log(server.ID, $"Server: Updated {(validate ? "Validate " : string.Empty)}({remoteVersion})");
-                await UpdateModFramework(server);
+                if (p.ExitCode == 0)
+                {
+                    Log(server.ID, $"Server: Updated {(validate ? "Validate " : string.Empty)}({remoteVersion})");
+                    await UpdateModFramework(server);
+                }
+                else
+                {
+                    Log(server.ID, "Server: Fail to update");
+                    Log(server.ID, $"[ERROR] SteamCMD exit code: {p.ExitCode}");
+                }
             }
             else
             {
@@ -626,6 +634,10 @@ namespace ToolCupboard.Functions
                         if (updater != null)
                         {
                             await Task.Run(() => updater.WaitForExit());
+                            if (updater.ExitCode != 0)
+                            {
+                                gameServer.Error = $"SteamCMD exit code: {updater.ExitCode}";
+                            }
                         }
 
                         if (string.IsNullOrWhiteSpace(gameServer.Error))
