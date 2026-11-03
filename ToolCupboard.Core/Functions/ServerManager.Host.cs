@@ -1095,6 +1095,16 @@ namespace ToolCupboard.Functions
             };
         }
 
+        public List<LeaderboardRow> GetWebLeaderboard(string serverId, DateTime? from, DateTime? to)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            DateTime start = from ?? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            DateTime end = (to ?? DateTime.Today).Date.AddDays(1);
+            return Leaderboard.Get(server.ID, start, end);
+        }
+
         public List<ChatMessage> GetWebChat(string serverId, string query, string channel, int days)
         {
             ServerTable server = GetServerTableById(serverId);

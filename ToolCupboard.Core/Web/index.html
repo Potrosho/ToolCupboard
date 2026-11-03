@@ -101,6 +101,10 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .note-body a { color: var(--color-focus); }
 #note-text { font-family: var(--font-mono); }
 @media (max-width: 720px) { #notes-view { grid-template-columns: minmax(0, 1fr); } }
+.board-range { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-bottom: 12px; }
+.board-range input { width: auto; }
+#board th button { min-height: 0; padding: 0; border: 0; color: inherit; font: inherit; }
+#board th button[aria-pressed="true"] { color: var(--color-ink); font-weight: 600; }
 .charts-range { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .charts-range button[aria-pressed="true"] { background: var(--color-paper-3); font-weight: 600; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 16px; }
@@ -266,6 +270,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-console" aria-selected="true" aria-controls="console-view">Console</button>
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
+        <button role="tab" id="tab-board" aria-selected="false" aria-controls="board-view">Leaderboard</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
         <button role="tab" id="tab-files" aria-selected="false" aria-controls="files-view">Files</button>
         <button role="tab" id="tab-wipe" aria-selected="false" aria-controls="wipe-view">Wipe</button>
@@ -314,6 +319,18 @@ dialog .actions { justify-content: flex-end; }
             <span class="form-status" id="file-editor-status"></span>
           </div>
         </div>
+      </div>
+      <div id="board-view" class="panel" role="tabpanel" hidden>
+        <form class="board-range" id="board-range">
+          <label class="field"><span>From</span><input id="board-from" type="date"></label>
+          <label class="field"><span>To</span><input id="board-to" type="date"></label>
+          <button type="button" id="board-month">This month</button>
+        </form>
+        <table id="board" hidden>
+          <thead><tr><th scope="col" class="num">#</th><th scope="col">Player</th><th scope="col" class="num"><button type="button" data-sort="kills">Kills</button></th><th scope="col" class="num"><button type="button" data-sort="deaths">Deaths</button></th><th scope="col" class="num"><button type="button" data-sort="killDeath">K/D</button></th><th scope="col" class="num"><button type="button" data-sort="headshotPercent">Headshots</button></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note" id="board-note">No deaths in this range yet. The ToolCupboard mod records kills while the server runs.</p>
       </div>
       <div id="chat-view" class="panel" role="tabpanel" hidden>
         <form class="chat-search" id="chat-search">
@@ -850,7 +867,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', chat: 'chat-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -861,6 +878,7 @@ function refreshView() {
   if (view === 'charts') { refreshCharts(); }
   if (view === 'chat') { refreshChat(); }
   if (view === 'files') { refreshFiles(); }
+  if (view === 'board') { refreshBoard(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1166,6 +1184,43 @@ $('note-form').onsubmit = async event => {
   if (renamed) { await fetch(noteUrl(noteName), { method: 'DELETE', headers: { 'X-ToolCupboard-Token': token || '' } }).catch(() => null); }
   openNote(name);
 };
+
+let boardRows = [], boardSort = 'kills';
+const isoDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+function boardThisMonth() {
+  const today = new Date();
+  $('board-from').value = isoDay(new Date(today.getFullYear(), today.getMonth(), 1));
+  $('board-to').value = isoDay(today);
+}
+
+async function refreshBoard() {
+  if (!selected) { return; }
+  if (!$('board-from').value) { boardThisMonth(); }
+  const params = new URLSearchParams({ from: $('board-from').value, to: $('board-to').value });
+  boardRows = await api(`servers/${selected}/leaderboard?${params}`).catch(() => null) || [];
+  showBoard();
+}
+
+function showBoard() {
+  const rows = [...boardRows].sort((a, b) => b[boardSort] - a[boardSort] || b.kills - a.kills);
+  const body = $('board').tBodies[0];
+  body.replaceChildren();
+  rows.forEach((row, index) => {
+    const tr = body.insertRow();
+    const cells = [index + 1, row.name || row.steamId, row.kills, row.deaths, row.killDeath.toFixed(2), `${row.headshotPercent}%`];
+    cells.forEach((value, i) => { const td = tr.insertCell(); td.textContent = value; if (i !== 1) { td.className = 'num'; } });
+    tr.cells[1].title = row.steamId;
+  });
+  for (const button of $('board').querySelectorAll('th button')) { button.setAttribute('aria-pressed', String(button.dataset.sort === boardSort)); }
+  $('board').hidden = !rows.length;
+  $('board-note').hidden = !!rows.length;
+}
+
+for (const button of $('board').querySelectorAll('th button')) { button.onclick = () => { boardSort = button.dataset.sort; showBoard(); }; }
+$('board-from').onchange = refreshBoard;
+$('board-to').onchange = refreshBoard;
+$('board-month').onclick = () => { boardThisMonth(); refreshBoard(); };
 
 async function refreshChat() {
   if (!selected) { return; }

@@ -127,6 +127,15 @@ namespace ToolCupboard.Functions
             _context = context;
             Bot = new DiscordBot.Bot(this);
 
+            ModEventReceived += (serverId, type, data) =>
+            {
+                if (type != "death") { return; }
+
+                PlayerDeath death = PlayerDeath.FromMod(data, DateTime.Now);
+                try { if (death != null) { Leaderboard.Append(serverId, death); } }
+                catch (IOException e) { Debug.WriteLine($"Could not save a death: {e.Message}"); }
+            };
+
             for (int i = 0; i <= AppInfo.MaxServers; i++)
             {
                 _serverMetadata[i] = new ServerMetadata

@@ -12,7 +12,7 @@ namespace ToolCupboard.Mod
     public class ToolCupboardMod : IHarmonyModHooks
     {
         // ToolCupboard compares this with the copy it ships, and replaces an older mod
-        public const string Version = "1";
+        public const string Version = "2";
 
         public void OnLoaded(OnHarmonyModLoadedArgs args)
         {

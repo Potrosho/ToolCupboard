@@ -47,71 +47,21 @@ namespace ToolCupboard.Functions
     /// </summary>
     public static class ChatLog
     {
-        static readonly object _writing = new object();
-
         static string Folder(string serverId) => Path.Combine(ServerPath.GetServers(serverId), "chat");
 
-        public static void Append(string serverId, ChatMessage message)
-        {
-            string line = JsonConvert.SerializeObject(message) + Environment.NewLine;
-            lock (_writing)
-            {
-                Directory.CreateDirectory(Folder(serverId));
-                using (var stream = new FileStream(Path.Combine(Folder(serverId), $"{message.Time:yyyyMMdd}.jsonl"), FileMode.Append, FileAccess.Write, FileShare.Read))
-                using (var writer = new StreamWriter(stream))
-                {
-                    writer.Write(line);
-                }
-            }
-        }
+        public static void Append(string serverId, ChatMessage message) => JsonDayLog.Append(Folder(serverId), message.Time, message);
 
         // Newest first. The query matches the message, the player name, or the Steam ID.
         public static List<ChatMessage> Search(string serverId, string query, string channel, int days, int limit = 300)
         {
-            var found = new List<ChatMessage>();
-            string folder = Folder(serverId);
-            if (!Directory.Exists(folder)) { return found; }
-
-            string from = DateTime.Today.AddDays(1 - days).ToString("yyyyMMdd");
             query = query?.Trim() ?? string.Empty;
-
-            foreach (string file in Directory.GetFiles(folder, "*.jsonl").Where(f => string.CompareOrdinal(Path.GetFileNameWithoutExtension(f), from) >= 0).OrderByDescending(f => f))
-            {
-                foreach (string line in Enumerable.Reverse(ReadLinesShared(file)))
-                {
-                    ChatMessage message;
-                    try { message = JsonConvert.DeserializeObject<ChatMessage>(line); }
-                    catch (JsonException) { continue; }
-                    if (message == null) { continue; }
-
-                    if (!string.IsNullOrEmpty(channel) && message.Channel != channel) { continue; }
-                    if (query.Length > 0 && !Contains(message.Message, query) && !Contains(message.Name, query) && message.SteamId != query) { continue; }
-
-                    found.Add(message);
-                    if (found.Count >= limit) { return found; }
-                }
-            }
-
-            return found;
+            return JsonDayLog.ReadNewestFirst<ChatMessage>(Folder(serverId), DateTime.Today.AddDays(1 - days))
+                .Where(message => string.IsNullOrEmpty(channel) || message.Channel == channel)
+                .Where(message => query.Length == 0 || Contains(message.Message, query) || Contains(message.Name, query) || message.SteamId == query)
+                .Take(limit)
+                .ToList();
         }
 
         static bool Contains(string text, string query) => text != null && text.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
-
-        // Reads while the file may be open for appending
-        static List<string> ReadLinesShared(string file)
-        {
-            var lines = new List<string>();
-            using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new StreamReader(stream))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (line.Length > 0) { lines.Add(line); }
-                }
-            }
-
-            return lines;
-        }
     }
 }

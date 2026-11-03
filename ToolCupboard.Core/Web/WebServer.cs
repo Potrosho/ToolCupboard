@@ -348,6 +348,8 @@ namespace ToolCupboard.Web
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/leaderboard", async (string id, DateTime? from, DateTime? to) => await _servers.Run(() => _servers.GetWebLeaderboard(id, from, to)) is object rows ? Results.Json(rows) : Results.NotFound());
+
             api.MapGet("/api/servers/{id}/build", async (string id) => await _servers.Run(() => _servers.GetWebBuild(id)) is object build ? Results.Json(build) : Results.NotFound());
 
             api.MapGet("/api/servers/{id}/players", async (string id) =>
