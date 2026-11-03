@@ -176,9 +176,28 @@ namespace ToolCupboard.Web
             });
         }
 
+        private static void MapNotes(IEndpointRouteBuilder api)
+        {
+            api.MapGet("/api/notes", () => Results.Json(Notes.List()));
+
+            api.MapGet("/api/notes/{name}", (string name) => Notes.Read(name) is string text ? Results.Json(new { text }) : Results.NotFound());
+
+            api.MapPut("/api/notes/{name}", (string name, WebCommand body) =>
+            {
+                if (!Notes.IsValidName(name)) { return Refused("Use letters, numbers, spaces, - and _ for the note name, up to 80 characters."); }
+                if (body?.Text == null || body.Text.Length > 1024 * 1024) { return Refused("The note is too large."); }
+
+                try { Notes.Save(name, body.Text); return Results.Ok(); }
+                catch (Exception e) when (IsFileError(e)) { return Refused(e.Message); }
+            });
+
+            api.MapDelete("/api/notes/{name}", (string name) => Notes.Delete(name) ? Results.Ok() : Results.NotFound());
+        }
+
         private void MapApi(IEndpointRouteBuilder api)
         {
             MapFiles(api);
+            MapNotes(api);
 
             api.MapGet("/api/servers", async () => Results.Json(await _servers.Run(_servers.GetWebServers)));
 
