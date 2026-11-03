@@ -13,3 +13,5 @@ ToolCupboard.Core/obj/
 ToolCupboard.Web/bin/
 ToolCupboard.Web/obj/
 dist/
+ToolCupboard.Mod/bin/
+ToolCupboard.Mod/obj/
