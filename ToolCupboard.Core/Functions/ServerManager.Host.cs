@@ -1189,6 +1189,57 @@ namespace ToolCupboard.Functions
 
         static bool IsId(string text) => ulong.TryParse(text, out _);
 
+        // The world size, seed and monuments, plus the map image, which is rendered once per map and mod version and kept with the server
+        public async Task<string> GetWebMap(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            Newtonsoft.Json.Linq.JToken info = server == null ? null : await ModCommand(server.ID, "toolcupboard.mapinfo");
+            if (info == null) { return null; }
+
+            string imagePath = Path.Combine(ServerPath.GetServers(server.ID), $"map-{info.Value<int>("worldSize")}-{info.Value<long>("seed")}-mod{GetServerMetadata(server.ID).ModVersion}.jpg");
+            if (!File.Exists(imagePath))
+            {
+                Newtonsoft.Json.Linq.JToken rendered = await ModCommand(server.ID, "toolcupboard.rendermap");
+                string renderedPath = rendered?.Value<string>("path");
+                if (renderedPath == null || !File.Exists(renderedPath)) { return Newtonsoft.Json.JsonConvert.SerializeObject(new { error = rendered?.Value<string>("error") ?? "The map could not be rendered." }); }
+                File.Move(renderedPath, imagePath, true);
+            }
+
+            // Newtonsoft writes it, because the monuments are Newtonsoft JSON that the web server's own writer cannot read
+            return Newtonsoft.Json.JsonConvert.SerializeObject(new { worldSize = info.Value<int>("worldSize"), monuments = info["monuments"], image = "data:image/jpeg;base64," + Convert.ToBase64String(File.ReadAllBytes(imagePath)) });
+        }
+
+        public async Task<Newtonsoft.Json.Linq.JToken> GetWebPositions(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : await ModCommand(server.ID, "toolcupboard.positions");
+        }
+
+        // The mod command for a teleport, or null when a value is not a plain Steam ID or number
+        public static string TeleportCommand(string steamId, string toSteamId, double? x, double? z)
+        {
+            if (!IsId(steamId)) { return null; }
+            if (toSteamId != null) { return IsId(toSteamId) ? $"toolcupboard.teleport {steamId} {toSteamId}" : null; }
+            if (x == null || z == null || double.IsNaN(x.Value) || double.IsNaN(z.Value) || double.IsInfinity(x.Value) || double.IsInfinity(z.Value)) { return null; }
+            return FormattableString.Invariant($"toolcupboard.teleport {steamId} {Math.Round(x.Value, 1)} {Math.Round(z.Value, 1)}");
+        }
+
+        // Returns null when done, otherwise the reason it was refused
+        public async Task<string> TeleportWebPlayer(string serverId, Web.WebTeleport request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            string command = TeleportCommand(request?.SteamId, request?.ToSteamId, request?.X, request?.Z);
+            if (command == null) { return "Choose a player and a place."; }
+
+            Newtonsoft.Json.Linq.JToken reply = await ModCommand(server.ID, command);
+            if (reply == null) { return "The server did not answer. Is it running with the ToolCupboard mod loaded?"; }
+
+            string error = reply.Value<string>("error");
+            if (error == null) { Log(server.ID, $"Map: teleported {request.SteamId} to {(request.ToSteamId ?? $"{reply.Value<double>("x")}, {reply.Value<double>("z")}")} from the web UI"); }
+            return error;
+        }
+
         public async Task<Newtonsoft.Json.Linq.JToken> GetWebTeams(string serverId, string list)
         {
             ServerTable server = GetServerTableById(serverId);

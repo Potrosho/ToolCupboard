@@ -13,7 +13,7 @@ namespace ToolCupboard.Mod
     public class ToolCupboardMod : IHarmonyModHooks
     {
         // ToolCupboard compares this with the copy it ships, and replaces an older mod
-        public const string Version = "5";
+        public const string Version = "7";
 
         public void OnLoaded(OnHarmonyModLoadedArgs args)
         {
@@ -64,6 +64,10 @@ namespace ToolCupboard.Mod
             Add("version", "The ToolCupboard mod version", arg => arg.ReplyWith(JsonConvert.SerializeObject(new { version = ToolCupboardMod.Version })));
             Add("events", "Returns and clears the queued ToolCupboard events", arg => arg.ReplyWith(Events.Take()));
             Add("context", "Where two players are relative to each other: toolcupboard.context <steamid> <steamid>", arg => arg.ReplyWith(Context(arg.GetString(0), arg.GetString(1))));
+            Add("rendermap", "Saves the map as a JPG for the ToolCupboard live map", arg => arg.ReplyWith(MapCommands.Render()));
+            Add("mapinfo", "The world size, seed and monuments", arg => arg.ReplyWith(MapCommands.Info()));
+            Add("positions", "Where every player and sleeper is", arg => arg.ReplyWith(MapCommands.Positions()));
+            Add("teleport", "toolcupboard.teleport <steamid> <x> <z> | <steamid> <steamid>", arg => arg.ReplyWith(MapCommands.Teleport(arg.GetString(0), arg.GetString(1), arg.GetString(2))));
             Add("teams", "Lists every team", arg => arg.ReplyWith(TeamsAndClans.Teams()));
             Add("team", "toolcupboard.team promote|kick|disband <teamId> [steamid]", arg => arg.ReplyWith(TeamsAndClans.Team(arg.GetString(0), arg.GetString(1), arg.GetString(2))));
             Add("clans", "Lists every clan", arg => arg.ReplyWith(TeamsAndClans.Clans()));

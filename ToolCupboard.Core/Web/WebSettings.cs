@@ -95,6 +95,14 @@ namespace ToolCupboard.Web
         public string File { get; set; }
     }
 
+    public class WebTeleport
+    {
+        public string SteamId { get; set; }
+        public string ToSteamId { get; set; }
+        public double? X { get; set; }
+        public double? Z { get; set; }
+    }
+
     public class WebGroupAction
     {
         public string SteamId { get; set; }

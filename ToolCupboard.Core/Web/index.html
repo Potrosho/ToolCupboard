@@ -19,6 +19,12 @@
   --color-accent-ink: oklch(98% 0.01 80);
   --color-focus: oklch(76% 0.19 56);
   --color-well: oklch(10% 0.01 40);
+  --color-map-grid: oklch(100% 0 0 / 0.18);
+  --color-map-grid-text: oklch(100% 0 0 / 0.45);
+  --color-map-label: oklch(97% 0.01 80);
+  --color-map-shadow: oklch(0% 0 0 / 0.9);
+  --color-map-online: oklch(78% 0.17 145);
+  --color-map-sleeper: oklch(65% 0.02 250);
   --color-live: oklch(76% 0.19 56);
   --color-busy: oklch(89% 0.14 78);
   --color-danger: oklch(72% 0.17 30);
@@ -101,6 +107,27 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .note-body a { color: var(--color-focus); }
 #note-text { font-family: var(--font-mono); }
 @media (max-width: 720px) { #notes-view { grid-template-columns: minmax(0, 1fr); } }
+#map-view { display: grid; grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr); gap: 12px; }
+.map-frame { position: relative; overflow: hidden; aspect-ratio: 1; background: var(--color-well); border: 1px solid var(--color-rule); border-radius: var(--radius-well); cursor: grab; touch-action: none; user-select: none; }
+.map-frame.dragging { cursor: grabbing; }
+.map-frame.placing { cursor: crosshair; }
+.map-layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.map-layer img { display: block; width: 100%; height: 100%; }
+.map-layer svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.map-grid line { stroke: var(--color-map-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.map-grid text { fill: var(--color-map-grid-text); font: 600 11px var(--font-body); }
+.map-label { position: absolute; transform: translate(-50%, -50%); color: var(--color-map-label); font-size: 11px; white-space: nowrap; pointer-events: none; text-shadow: 0 0 3px var(--color-map-shadow); }
+.map-player { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0; min-height: 0; border: 2px solid var(--color-map-online); border-radius: 50%; background: var(--color-paper-2); overflow: hidden; }
+.map-player.sleeping { border-color: var(--color-map-sleeper); opacity: .8; }
+.map-player.selected { border-color: var(--color-focus); box-shadow: 0 0 0 3px var(--color-focus); z-index: 2; }
+.map-player img { width: 100%; height: 100%; object-fit: cover; }
+.map-tools { position: absolute; right: 8px; top: 8px; display: flex; gap: 4px; }
+.map-tools button { min-height: 30px; padding: 0 10px; background: var(--color-paper-2); }
+.map-side { display: grid; gap: 8px; align-content: start; }
+.map-people { display: grid; gap: 2px; max-height: 520px; overflow: auto; }
+.map-people button { justify-content: flex-start; text-align: left; white-space: normal; }
+.map-people button[aria-current="true"] { background: var(--color-paper-3); font-weight: 600; }
+@media (max-width: 720px) { #map-view { grid-template-columns: minmax(0, 1fr); } }
 .groups { display: grid; gap: 24px; }
 .group { padding: 10px 0; border-bottom: 1px solid var(--color-rule); }
 .group-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 6px; }
@@ -287,6 +314,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
         <button role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view">Activity</button>
         <button role="tab" id="tab-reports" aria-selected="false" aria-controls="reports-view">Reports</button>
+        <button role="tab" id="tab-map" aria-selected="false" aria-controls="map-view">Map</button>
         <button role="tab" id="tab-groups" aria-selected="false" aria-controls="groups-view">Teams</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-board" aria-selected="false" aria-controls="board-view">Leaderboard</button>
@@ -337,6 +365,24 @@ dialog .actions { justify-content: flex-end; }
             <button id="file-editor-close" type="button">Close</button>
             <span class="form-status" id="file-editor-status"></span>
           </div>
+        </div>
+      </div>
+      <div id="map-view" class="panel" role="tabpanel" hidden>
+        <div>
+          <div class="map-frame" id="map-frame">
+            <div class="map-layer" id="map-layer"><img id="map-image" alt="The server map" draggable="false"><svg class="map-grid" id="map-grid" aria-hidden="true"></svg><div id="map-labels"></div><div id="map-players"></div></div>
+            <div class="map-tools"><button type="button" id="map-zoom-in" aria-label="Zoom in">+</button><button type="button" id="map-zoom-out" aria-label="Zoom out">-</button><button type="button" id="map-fit">Fit</button><button type="button" id="map-fullscreen">Fullscreen</button></div>
+          </div>
+          <p class="form-status" id="map-status">Drag to move, scroll to zoom.</p>
+        </div>
+        <div class="map-side">
+          <input id="map-search" type="search" aria-label="Find a player on the map" placeholder="Find a player" autocomplete="off">
+          <div id="map-selected" hidden>
+            <strong id="map-selected-name"></strong>
+            <p class="report-meta" id="map-selected-where"></p>
+            <div class="row-actions"><button type="button" id="map-place">Teleport to a spot</button><select id="map-bring" aria-label="Teleport to another player"><option value="">Teleport to a player</option></select></div>
+          </div>
+          <div class="map-people" id="map-people"></div>
         </div>
       </div>
       <div id="groups-view" class="panel groups" role="tabpanel" hidden>
@@ -910,7 +956,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', map: 'map-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -925,6 +971,7 @@ function refreshView() {
   if (view === 'activity') { refreshActivity(); }
   if (view === 'reports') { refreshReports(); }
   if (view === 'groups') { refreshGroups(); }
+  if (view === 'map') { refreshMap(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1233,6 +1280,245 @@ $('note-form').onsubmit = async event => {
 
 const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned', report: 'Reported' };
 const reportStatuses = { open: 'Open', looking: 'Being looked at', resolved: 'Resolved', dismissed: 'Dismissed' };
+
+// Live map: world x/z are metres from the centre, north up. The layer is the map image at its natural size, moved and scaled.
+let map = null, mapServer = null, mapPlayers = [], mapSelected = null, mapPlacing = false, mapTimer = null;
+const mapView = { x: 0, y: 0, scale: 1 };
+let mapFitted = true; // stays fitted to the frame until someone moves or zooms the map
+const avatars = new Map();
+
+function gridLabel(index) {
+  let label = '';
+  for (let n = index; n >= 0; n = Math.floor(n / 26) - 1) { label = String.fromCharCode(65 + (n % 26)) + label; }
+  return label;
+}
+
+// Rust's grid: square cells of about 146 m, letters across from the west, numbers down from the north
+function gridCell(x, z) {
+  const cells = Math.max(1, Math.floor(map.worldSize / 146.3));
+  const size = map.worldSize / cells;
+  if (Math.abs(x) > map.worldSize / 2 || Math.abs(z) > map.worldSize / 2) { return 'offshore'; }
+  const col = Math.min(cells - 1, Math.max(0, Math.floor((x + map.worldSize / 2) / size)));
+  const row = Math.min(cells - 1, Math.max(0, Math.floor((map.worldSize / 2 - z) / size)));
+  return `${gridLabel(col)}${row}`;
+}
+
+// The image has ocean around the playable square, at half a pixel per metre (MapCommands.PIXELS_PER_METRE in the mod)
+const toPixels = (x, z) => [(x + map.size / 2) / map.size * map.width, (map.size / 2 - z) / map.size * map.height];
+const toWorld = (px, py) => [px / map.width * map.size - map.size / 2, map.size / 2 - py / map.height * map.size];
+
+function applyMapView() {
+  $('map-layer').style.transform = `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.scale})`;
+  // Markers and labels keep their size while the map zooms
+  for (const el of $('map-layer').querySelectorAll('.map-player, .map-label')) { el.style.scale = String(1 / mapView.scale); }
+}
+
+// Fits the playable square, so the ocean border is only seen when panning out to it
+function fitMap() {
+  const frame = $('map-frame').getBoundingClientRect();
+  const [left, top] = toPixels(-map.worldSize / 2, map.worldSize / 2);
+  mapView.scale = frame.width / (map.width - 2 * left);
+  mapView.x = -left * mapView.scale; mapView.y = -top * mapView.scale;
+  mapFitted = true;
+  applyMapView();
+}
+
+function zoomMap(factor, cx, cy) {
+  const frame = $('map-frame').getBoundingClientRect();
+  const min = frame.width / map.width, max = frame.width / map.width * map.size / map.worldSize * 12;
+  const next = Math.min(max, Math.max(min, mapView.scale * factor));
+  const px = cx ?? frame.width / 2, py = cy ?? frame.height / 2;
+  mapView.x = px - (px - mapView.x) * next / mapView.scale;
+  mapView.y = py - (py - mapView.y) * next / mapView.scale;
+  mapView.scale = next;
+  mapFitted = false;
+  applyMapView();
+}
+
+function centreOn(x, z) {
+  const frame = $('map-frame').getBoundingClientRect();
+  const [px, py] = toPixels(x, z);
+  const zoomed = frame.width / map.width * map.size / map.worldSize * 3;
+  if (mapView.scale < zoomed) { mapView.scale = zoomed; }
+  mapView.x = frame.width / 2 - px * mapView.scale;
+  mapView.y = frame.height / 2 - py * mapView.scale;
+  mapFitted = false;
+  applyMapView();
+}
+
+function drawGrid() {
+  const svg = $('map-grid');
+  svg.setAttribute('viewBox', `0 0 ${map.width} ${map.height}`);
+  // Rust's grid covers only the playable square, which sits inside the ocean border
+  const [o] = toPixels(-map.worldSize / 2, 0), side = map.width - 2 * o;
+  const cells = Math.max(1, Math.floor(map.worldSize / 146.3)), size = side / cells;
+  let content = '';
+  for (let i = 0; i <= cells; i++) { content += `<line x1="${o + i * size}" y1="${o}" x2="${o + i * size}" y2="${o + side}"/><line x1="${o}" y1="${o + i * size}" x2="${o + side}" y2="${o + i * size}"/>`; }
+  for (let c = 0; c < cells; c++) { for (let r = 0; r < cells; r++) { content += `<text x="${o + c * size + 3}" y="${o + r * size + 12}">${gridLabel(c)}${r}</text>`; } }
+  svg.innerHTML = content;
+  // Substations are small and everywhere, so they would hide the names that matter
+  $('map-labels').replaceChildren(...map.monuments.filter(m => !/substation/i.test(m.name)).map(m => {
+    const label = document.createElement('span');
+    label.className = 'map-label';
+    const [px, py] = toPixels(m.x, m.z);
+    label.style.left = `${px}px`; label.style.top = `${py}px`;
+    label.textContent = m.name;
+    return label;
+  }));
+}
+
+async function avatarFor(steamId, image) {
+  if (!avatars.has(steamId)) { avatars.set(steamId, api(`avatars/${steamId}`).then(a => a?.url).catch(() => null)); }
+  const url = await avatars.get(steamId);
+  if (url) { image.src = url; }
+}
+
+function oceanColour(image) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext('2d');
+  context.drawImage(image, 0, 0, 1, 1, 0, 0, 1, 1);
+  const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r} ${g} ${b})`;
+}
+
+async function refreshMap() {
+  if (!selected) { return; }
+  if (mapServer !== selected || !map) {
+    mapServer = selected; map = null; mapSelected = null;
+    setText($('map-status'), 'Loading the map. The first time, the server renders it, which takes a few seconds.');
+    const loaded = await api(`servers/${selected}/map`).catch(() => null);
+    if (!loaded || loaded.error) { setText($('map-status'), loaded?.error || 'Start the server with the ToolCupboard mod to see the map.'); return; }
+    const image = $('map-image');
+    await new Promise(resolve => { image.onload = resolve; image.src = loaded.image; });
+    map = { worldSize: loaded.worldSize, size: image.naturalWidth / 0.5, monuments: loaded.monuments || [], width: image.naturalWidth, height: image.naturalHeight };
+    // Past the edge of the image the frame shows the same open ocean, so the sea seems to go on like in game
+    $('map-frame').style.backgroundColor = oceanColour(image);
+    $('map-layer').style.width = `${map.width}px`; $('map-layer').style.height = `${map.height}px`;
+    drawGrid();
+    fitMap();
+    setText($('map-status'), 'Drag to move, scroll to zoom.');
+  }
+  await refreshPositions();
+  clearTimeout(mapTimer);
+  mapTimer = setTimeout(() => { if (view === 'map') { refreshMap(); } }, 5000);
+}
+
+async function refreshPositions() {
+  mapPlayers = await api(`servers/${selected}/positions`).catch(() => null) || [];
+  const layer = $('map-players');
+  layer.replaceChildren(...mapPlayers.map(p => {
+    const marker = document.createElement('button');
+    marker.type = 'button';
+    marker.className = `map-player${p.online ? '' : ' sleeping'}${p.steamId === mapSelected ? ' selected' : ''}`;
+    const [px, py] = toPixels(p.x, p.z);
+    marker.style.left = `${px}px`; marker.style.top = `${py}px`;
+    marker.title = `${p.name}${p.online ? '' : ' (sleeping)'} at ${gridCell(p.x, p.z)}`;
+    marker.setAttribute('aria-label', marker.title);
+    const image = document.createElement('img');
+    image.alt = '';
+    avatarFor(p.steamId, image);
+    marker.append(image);
+    marker.onclick = event => { event.stopPropagation(); selectMapPlayer(p.steamId); };
+    return marker;
+  }));
+  applyMapView();
+  showMapPeople();
+}
+
+function showMapPeople() {
+  const query = $('map-search').value.trim().toLowerCase();
+  const people = mapPlayers.filter(p => !query || p.name.toLowerCase().includes(query) || p.steamId === query)
+    .sort((a, b) => b.online - a.online || a.name.localeCompare(b.name));
+  $('map-people').replaceChildren(...people.map(p => {
+    const button = actionButton(`${p.name}${p.online ? '' : ' (sleeping)'} · ${gridCell(p.x, p.z)}`, () => selectMapPlayer(p.steamId, true));
+    if (p.steamId === mapSelected) { button.setAttribute('aria-current', 'true'); }
+    return button;
+  }));
+  const chosen = mapPlayers.find(p => p.steamId === mapSelected);
+  $('map-selected').hidden = !chosen;
+  if (chosen) {
+    setText($('map-selected-name'), chosen.name);
+    setText($('map-selected-where'), `${chosen.online ? 'Online' : 'Sleeping'} at ${gridCell(chosen.x, chosen.z)} (${chosen.x}, ${chosen.z})`);
+    $('map-place').disabled = !chosen.online;
+    const bring = $('map-bring');
+    bring.disabled = !chosen.online;
+    bring.replaceChildren(new Option('Teleport to a player', ''), ...mapPlayers.filter(p => p.steamId !== chosen.steamId).map(p => new Option(p.name, p.steamId)));
+  }
+}
+
+function selectMapPlayer(steamId, centre) {
+  mapSelected = steamId;
+  mapPlacing = false;
+  $('map-frame').classList.remove('placing');
+  const chosen = mapPlayers.find(p => p.steamId === steamId);
+  if (centre && chosen) { centreOn(chosen.x, chosen.z); }
+  refreshPositions();
+}
+
+async function teleport(body, where) {
+  const chosen = mapPlayers.find(p => p.steamId === mapSelected);
+  if (!chosen || await confirmAction('Teleport', `Teleport ${chosen.name} to ${where}?`, false) === null) { return; }
+  const error = await send(`servers/${selected}/teleport`, 'POST', { steamId: chosen.steamId, ...body });
+  setText($('map-status'), error || `Teleported ${chosen.name} to ${where}.`);
+  refreshPositions();
+}
+
+$('map-place').onclick = () => {
+  mapPlacing = !mapPlacing;
+  $('map-frame').classList.toggle('placing', mapPlacing);
+  setText($('map-status'), mapPlacing ? 'Click the map where the player should go.' : 'Drag to move, scroll to zoom.');
+};
+$('map-bring').onchange = () => {
+  const target = mapPlayers.find(p => p.steamId === $('map-bring').value);
+  if (target) { teleport({ toSteamId: target.steamId }, target.name); }
+  $('map-bring').value = '';
+};
+$('map-search').oninput = showMapPeople;
+$('map-zoom-in').onclick = () => map && zoomMap(1.5);
+$('map-zoom-out').onclick = () => map && zoomMap(1 / 1.5);
+$('map-fit').onclick = () => map && fitMap();
+$('map-fullscreen').onclick = () => document.fullscreenElement ? document.exitFullscreen() : $('map-frame').requestFullscreen?.().then(() => setTimeout(fitMap, 100));
+
+(() => {
+  const frame = $('map-frame');
+  // The frame has no size while its tab is hidden or the page is still laying out
+  new ResizeObserver(() => { if (map && mapFitted) { fitMap(); } }).observe(frame);
+  // Without this the browser starts dragging the map picture (or an avatar) partway through a pan
+  frame.addEventListener('dragstart', event => event.preventDefault());
+  let drag = null;
+  frame.addEventListener('wheel', event => {
+    if (!map) { return; }
+    event.preventDefault();
+    const rect = frame.getBoundingClientRect();
+    zoomMap(event.deltaY < 0 ? 1.25 : 0.8, event.clientX - rect.left, event.clientY - rect.top);
+  }, { passive: false });
+  frame.addEventListener('pointerdown', event => {
+    if (!map || event.target.closest('button, select')) { return; }
+    event.preventDefault();
+    drag = { x: event.clientX, y: event.clientY, startX: mapView.x, startY: mapView.y, moved: false };
+    frame.setPointerCapture(event.pointerId);
+  });
+  frame.addEventListener('pointermove', event => {
+    if (!drag) { return; }
+    const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; frame.classList.add('dragging'); }
+    mapView.x = drag.startX + dx; mapView.y = drag.startY + dy;
+    if (drag.moved) { mapFitted = false; }
+    applyMapView();
+  });
+  frame.addEventListener('pointerup', event => {
+    const clicked = drag && !drag.moved;
+    drag = null;
+    frame.classList.remove('dragging');
+    if (!clicked || !mapPlacing || !map) { return; }
+    const rect = frame.getBoundingClientRect();
+    const [x, z] = toWorld((event.clientX - rect.left - mapView.x) / mapView.scale, (event.clientY - rect.top - mapView.y) / mapView.scale);
+    mapPlacing = false;
+    frame.classList.remove('placing');
+    teleport({ x, z }, `${gridCell(x, z)} (${Math.round(x)}, ${Math.round(z)})`);
+  });
+})();
 
 let groupData = { teams: null, clans: null };
 

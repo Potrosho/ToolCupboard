@@ -357,6 +357,14 @@ namespace ToolCupboard.Web
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/map", async (string id) => await _servers.Run(() => _servers.GetWebMap(id)) is string map ? Results.Content(map, "application/json") : Results.Conflict());
+
+            api.MapGet("/api/servers/{id}/positions", async (string id) => await _servers.Run(() => _servers.GetWebPositions(id)) is object positions ? Results.Content(positions.ToString(), "application/json") : Results.Conflict());
+
+            api.MapPost("/api/servers/{id}/teleport", async (string id, WebTeleport body) => Refused(await _servers.Run(() => _servers.TeleportWebPlayer(id, body))));
+
+            api.MapGet("/api/avatars/{steamId}", async (string steamId) => await SteamAvatars.Get(steamId) is string url ? Results.Json(new { url }) : Results.NotFound());
+
             api.MapGet("/api/servers/{id}/groups/{list}", async (string id, string list) => await _servers.Run(() => _servers.GetWebTeams(id, list)) is object groups ? Results.Content(groups.ToString(), "application/json") : Results.Conflict());
 
             api.MapPost("/api/servers/{id}/groups/{kind}/{groupId}/{action}", async (string id, string kind, string groupId, string action, WebGroupAction body) => Refused(await _servers.Run(() => _servers.RunWebGroupAction(id, kind, groupId, action, body?.SteamId, body?.RoleId))));
