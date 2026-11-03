@@ -145,6 +145,12 @@ namespace ToolCupboard.Web
 
             api.MapGet("/api/system", async () => Results.Json(await _servers.Run(_servers.GetWebSystem)));
 
+            api.MapGet("/api/public-ip", async () =>
+            {
+                try { return Results.Json(new { ip = await Functions.RouterPorts.GetPublicIp() }); }
+                catch { return Results.StatusCode(502); }
+            });
+
             api.MapPut("/api/system/options", async (WebAppOptions options) => { await _servers.Run(() => _servers.SaveWebOptions(options)); return Results.Ok(); });
 
             api.MapGet("/api/discord", async () => Results.Json(await _servers.Run(_servers.GetWebDiscord)));

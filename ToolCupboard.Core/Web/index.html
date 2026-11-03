@@ -200,7 +200,8 @@ dialog .actions { justify-content: flex-end; }
     </div>
   </div>
   <dl class="facts">
-    <div><dt>Address</dt><dd class="address"><span id="fact-address">None</span><button id="copy-address" type="button" disabled>Copy</button></dd></div>
+    <div><dt>Local address</dt><dd class="address"><span id="fact-address">None</span><button id="copy-address" type="button" disabled>Copy</button></dd></div>
+    <div><dt>Public address</dt><dd class="address"><span id="fact-public">None</span><button id="copy-public" type="button" disabled>Copy</button></dd></div>
     <div><dt>Framework</dt><dd id="fact-framework">None</dd></div>
     <div><dt>Map</dt><dd id="fact-map">None</dd></div>
     <div><dt>Players</dt><dd id="fact-players">None</dd></div>
@@ -540,11 +541,13 @@ function renderSelected() {
   setText($('state'), status || '');
   $('state').className = status ? statusClass(status) : '';
   setText($('fact-address'), server ? `${server.ip}:${server.port}` : 'None');
+  setText($('fact-public'), !server ? 'None' : publicIp ? `${publicIp}:${server.port}` : 'Shown when you copy it');
   setText($('fact-framework'), server?.framework || 'None');
   setText($('fact-map'), server?.map || 'None');
   setText($('fact-players'), server?.players || 'None');
   setText($('fact-uptime'), server?.uptime || 'None');
   $('copy-address').disabled = !server;
+  $('copy-public').disabled = !server;
   $('start').disabled = status !== 'Stopped';
   $('update').disabled = status !== 'Stopped';
   $('backup').disabled = status !== 'Stopped';
@@ -1120,11 +1123,22 @@ for (const action of ['start', 'stop', 'restart', 'update', 'backup']) {
   };
 }
 
-$('copy-address').onclick = async () => {
-  const button = $('copy-address');
-  await navigator.clipboard.writeText($('fact-address').textContent);
+async function copyFact(button, text) {
+  await navigator.clipboard.writeText(text);
   button.textContent = 'Copied';
   setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+}
+
+let publicIp = null;
+
+$('copy-address').onclick = () => copyFact($('copy-address'), $('fact-address').textContent);
+
+$('copy-public').onclick = async () => {
+  const result = await api('public-ip').catch(() => null);
+  if (!result) { setText($('fact-public'), 'Could not look it up. Check your internet connection.'); return; }
+  publicIp = result.ip;
+  setText($('fact-public'), `${publicIp}:${current().port}`);
+  await copyFact($('copy-public'), $('fact-public').textContent);
 };
 
 $('command').onsubmit = async event => {

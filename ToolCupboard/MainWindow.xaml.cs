@@ -796,6 +796,33 @@ namespace ToolCupboard
             ProcessManagement.OpenShell(g_WebServer.Url);
         }
 
+        private async void Button_CopyLocalIp_Click(object sender, RoutedEventArgs e)
+        {
+            var server = (ServerTable)ServerGrid.SelectedItem;
+            if (server == null) { await this.ShowMessageAsync("Copy Local IP", "Select a server first."); return; }
+
+            // The clipboard can be briefly locked by another app
+            try { System.Windows.Clipboard.SetText($"{server.IP}:{server.Port}"); }
+            catch { await this.ShowMessageAsync("Copy Local IP", "Could not copy. Try again."); }
+        }
+
+        private async void Button_CopyPublicIp_Click(object sender, RoutedEventArgs e)
+        {
+            var server = (ServerTable)ServerGrid.SelectedItem;
+            if (server == null) { await this.ShowMessageAsync("Copy Public IP", "Select a server first."); return; }
+
+            try
+            {
+                string address = $"{await RouterPorts.GetPublicIp()}:{server.Port}";
+                System.Windows.Clipboard.SetText(address);
+                await this.ShowMessageAsync("Copy Public IP", $"Copied {address}\n\nPlayers outside your network can join with it once the server's ports are open on your router.");
+            }
+            catch
+            {
+                await this.ShowMessageAsync("Copy Public IP", "Could not look up your public IP. Check your internet connection.");
+            }
+        }
+
         #endregion
 
         #region Server Settings

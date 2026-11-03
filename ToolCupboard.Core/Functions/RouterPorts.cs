@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Mono.Nat;
 
@@ -12,6 +13,25 @@ namespace ToolCupboard.Functions
     public static class RouterPorts
     {
         const int SearchSeconds = 8;
+
+        static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        static string _publicIp;
+        static DateTime _publicIpTime;
+
+        // Asks api.ipify.org only when someone copies the public address, then remembers it for 10 minutes
+        public static async Task<string> GetPublicIp()
+        {
+            if (_publicIp == null || DateTime.Now - _publicIpTime > TimeSpan.FromMinutes(10))
+            {
+                string ip = (await _httpClient.GetStringAsync("https://api.ipify.org")).Trim();
+                if (!IPAddress.TryParse(ip, out _)) { throw new InvalidOperationException("The public IP lookup gave an unexpected answer."); }
+
+                _publicIp = ip;
+                _publicIpTime = DateTime.Now;
+            }
+
+            return _publicIp;
+        }
 
         // Returns the router's public IP. Throws with a message for the user when the ports cannot be opened.
         public static async Task<string> Open(int[] ports, string description)

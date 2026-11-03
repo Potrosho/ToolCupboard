@@ -20,6 +20,8 @@
     <mah:MetroWindow.RightWindowCommands>
         <mah:WindowCommands>
             <!--<Button x:Name="button_Settings" Content="Settings" Click="Button_Settings_Click"/>-->
+            <Button Content="Copy Local IP" Click="Button_CopyLocalIp_Click" ToolTip="Copy the selected server's address for players on your network"/>
+            <Button Content="Copy Public IP" Click="Button_CopyPublicIp_Click" ToolTip="Copy the selected server's address for players outside your network"/>
             <Button x:Name="button_WebUI" Content="Web UI" Click="Button_WebUI_Click"/>
             <Button x:Name="button_Hide" Content="Hide" Click="Button_Hide_Click"/>
         </mah:WindowCommands>
