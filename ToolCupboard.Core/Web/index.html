@@ -107,6 +107,30 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .note-body a { color: var(--color-focus); }
 #note-text { font-family: var(--font-mono); }
 @media (max-width: 720px) { #notes-view { grid-template-columns: minmax(0, 1fr); } }
+#people-view { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr); gap: 16px; align-items: start; }
+.people-bar { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; margin-bottom: 8px; }
+.people-list button.person { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 0; padding: 6px 8px; border: 0; border-bottom: 1px solid var(--color-rule); border-radius: 0; text-align: left; white-space: normal; }
+.people-list button.person[aria-current="true"] { background: var(--color-paper-3); }
+.person img, .person-card img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: var(--color-paper-3); }
+.person-name { font-weight: 600; overflow-wrap: anywhere; }
+.person-meta { color: var(--color-muted); font-size: 14px; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.badge { padding: 1px 6px; border: 1px solid var(--color-rule); border-radius: 999px; font-size: 13px; color: var(--color-muted); white-space: nowrap; }
+.badge.on { color: var(--color-map-online); border-color: currentColor; }
+.badge.warn { color: var(--color-busy); border-color: currentColor; }
+.person-card { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--color-rule); border-radius: var(--radius-well); }
+.person-card header { display: flex; gap: 10px; align-items: center; }
+.person-card img { width: 48px; height: 48px; }
+.person-card dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 14px; }
+.person-card dt { color: var(--color-muted); }
+.person-card dd { margin: 0; overflow-wrap: anywhere; }
+.person-card .form-actions { flex-wrap: wrap; }
+.person-card select, .person-card input { width: auto; }
+.person-card input.grow { flex: 1 1 140px; }
+.person-card a { color: var(--color-focus); }
+.person-history { max-height: 260px; overflow: auto; font-size: 14px; }
+.person-history p { margin: 0 0 4px; }
+@media (max-width: 720px) { #people-view { grid-template-columns: minmax(0, 1fr); } }
 #map-view { display: grid; grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr); gap: 12px; }
 .map-frame { position: relative; overflow: hidden; aspect-ratio: 1; background: var(--color-well); border: 1px solid var(--color-rule); border-radius: var(--radius-well); cursor: grab; touch-action: none; user-select: none; }
 .map-frame.dragging { cursor: grabbing; }
@@ -314,6 +338,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
         <button role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view">Activity</button>
         <button role="tab" id="tab-reports" aria-selected="false" aria-controls="reports-view">Reports</button>
+        <button role="tab" id="tab-people" aria-selected="false" aria-controls="people-view">Players</button>
         <button role="tab" id="tab-map" aria-selected="false" aria-controls="map-view">Map</button>
         <button role="tab" id="tab-groups" aria-selected="false" aria-controls="groups-view">Teams</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
@@ -367,6 +392,17 @@ dialog .actions { justify-content: flex-end; }
           </div>
         </div>
       </div>
+      <div id="people-view" class="panel" role="tabpanel" hidden>
+        <div>
+          <div class="people-bar">
+            <input id="people-query" type="search" aria-label="Search players by name or Steam ID" placeholder="Search by name, past names, or Steam ID" autocomplete="off">
+            <select id="people-filter" aria-label="Show players"><option value="">Everyone</option><option value="online">Online</option><option value="waiting">Joining and queued</option><option value="offline">Offline</option><option value="staff">Staff</option><option value="banned">Banned</option><option value="muted">Muted</option></select>
+          </div>
+          <div class="people-list" id="people-list"></div>
+          <p class="note" id="people-note"></p>
+        </div>
+        <div id="person-panel"><p class="note">Choose a player to see their details and history.</p></div>
+      </div>
       <div id="map-view" class="panel" role="tabpanel" hidden>
         <div>
           <div class="map-frame" id="map-frame">
@@ -399,7 +435,7 @@ dialog .actions { justify-content: flex-end; }
       <div id="activity-view" class="panel" role="tabpanel" hidden>
         <form class="chat-search" id="activity-search">
           <input id="activity-query" type="search" aria-label="Search names, Steam IDs, or details" placeholder="Search names, Steam IDs, or details" autocomplete="off">
-          <select id="activity-type" aria-label="Event"><option value="">All events</option><option value="join">Joins</option><option value="leave">Leaves</option><option value="death">Deaths</option><option value="chat">Chat</option><option value="kick">Kicks</option><option value="ban">Bans</option></select>
+          <select id="activity-type" aria-label="Event"><option value="">All events</option><option value="join">Joins</option><option value="leave">Leaves</option><option value="death">Deaths</option><option value="chat">Chat</option><option value="kick">Kicks</option><option value="ban">Bans</option><option value="mute">Mutes</option><option value="staff">Role changes</option></select>
           <select id="activity-days" aria-label="Time range"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="3650">All time</option></select>
         </form>
         <table class="chat-log" id="activity-log" hidden>
@@ -896,7 +932,7 @@ const playerRows = new Map();
 async function playerAction(action, label, player) {
   const reason = await confirmAction(`${label} player`, `${label} ${player.displayName}?`, true);
   if (reason === null) { return; }
-  await api(`servers/${selected}/players/${player.steamID}/${action}`, { method: 'POST', body: JSON.stringify({ text: reason }) }).catch(() => null);
+  await send(`servers/${selected}/players/${player.steamID}/${action}`, 'POST', { reason });
   refreshPlayers();
 }
 
@@ -956,7 +992,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', map: 'map-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', people: 'people-view', map: 'map-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -972,6 +1008,7 @@ function refreshView() {
   if (view === 'reports') { refreshReports(); }
   if (view === 'groups') { refreshGroups(); }
   if (view === 'map') { refreshMap(); }
+  if (view === 'people') { refreshPeople(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1278,8 +1315,226 @@ $('note-form').onsubmit = async event => {
   openNote(name);
 };
 
-const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned', report: 'Reported' };
+const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned', report: 'Reported', unban: 'Unbanned', mute: 'Muted', unmute: 'Unmuted', staff: 'Role changed', give: 'Given items' };
 const reportStatuses = { open: 'Open', looking: 'Being looked at', resolved: 'Resolved', dismissed: 'Dismissed' };
+
+let people = [], peopleServer = null, personId = null, peopleTimer = null;
+
+function duration(seconds) {
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+// One entry per player, from everyone seen before plus who is on, joining or queued right now
+function mergePeople(data) {
+  const byId = new Map();
+  const get = (steamId, name) => {
+    if (!byId.has(steamId)) { byId.set(steamId, { steamId, name: name || steamId, otherNames: [], state: 'offline' }); }
+    const p = byId.get(steamId);
+    if (name && (p.name === steamId)) { p.name = name; }
+    return p;
+  };
+  for (const k of data.known || []) { Object.assign(get(k.steamId, k.name), k); }
+  for (const o of data.online || []) { Object.assign(get(o.steamID, o.displayName), { state: 'online', ping: o.ping, connected: o.connectedSeconds, name: o.displayName }); }
+  const roster = data.roster || {};
+  for (const w of roster.joining || []) { Object.assign(get(w.steamId, w.name), { state: 'joining' }); }
+  for (const w of roster.queued || []) { Object.assign(get(w.steamId, w.name), { state: 'queued' }); }
+  for (const s of roster.staff || []) { get(s.steamId, s.name).role = s.role; }
+  for (const b of roster.banned || []) { Object.assign(get(b.steamId, b.name), { banned: b.reason || 'Banned' }); }
+  for (const m of roster.muted || []) { get(m.steamId, m.name).mutedUntil = m.until; }
+  const order = { online: 0, joining: 1, queued: 2, offline: 3 };
+  return [...byId.values()].sort((a, b) => order[a.state] - order[b.state] || new Date(b.lastSeen || 0) - new Date(a.lastSeen || 0));
+}
+
+async function refreshPeople() {
+  if (!selected) { return; }
+  if (peopleServer !== selected) { peopleServer = selected; personId = null; }
+  const data = await api(`servers/${selected}/roster`).catch(() => null);
+  people = data ? mergePeople(data) : [];
+  setText($('people-note'), !data ? 'Could not load players.' : data.running ? '' : 'The server is not running, so only players seen before are listed.');
+  showPeople();
+  clearTimeout(peopleTimer);
+  peopleTimer = setTimeout(() => { if (view === 'people') { refreshPeople(); } }, 10000);
+}
+
+function badgesFor(p) {
+  const list = [];
+  const add = (text, kind) => { const b = document.createElement('span'); b.className = `badge${kind ? ` ${kind}` : ''}`; b.textContent = text; list.push(b); };
+  if (p.state === 'online') { add('Online', 'on'); } else if (p.state !== 'offline') { add(p.state === 'queued' ? 'In queue' : 'Joining', 'on'); }
+  if (p.role) { add(p.role === 'owner' ? 'Owner' : 'Moderator'); }
+  if (p.mutedUntil !== undefined) { add('Muted', 'warn'); }
+  if (p.banned) { add('Banned', 'warn'); }
+  return list;
+}
+
+function showPeople() {
+  const query = $('people-query').value.trim().toLowerCase();
+  const filter = $('people-filter').value;
+  const shown = people.filter(p => {
+    if (query && !(p.name.toLowerCase().includes(query) || p.steamId === query || (p.otherNames || []).some(n => n.toLowerCase().includes(query)))) { return false; }
+    switch (filter) {
+      case 'online': return p.state === 'online';
+      case 'waiting': return p.state === 'joining' || p.state === 'queued';
+      case 'offline': return p.state === 'offline';
+      case 'staff': return !!p.role;
+      case 'banned': return !!p.banned;
+      case 'muted': return p.mutedUntil !== undefined;
+      default: return true;
+    }
+  });
+  $('people-list').replaceChildren(...shown.map(p => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'person';
+    if (p.steamId === personId) { row.setAttribute('aria-current', 'true'); }
+    const image = document.createElement('img');
+    image.alt = '';
+    avatarFor(p.steamId, image);
+    const text = document.createElement('span');
+    const name = document.createElement('span');
+    name.className = 'person-name';
+    name.textContent = p.name;
+    const meta = document.createElement('span');
+    meta.className = 'person-meta';
+    meta.textContent = p.state === 'online' ? ` · ${p.ping} ms` : p.lastSeen ? ` · last seen ${new Date(p.lastSeen).toLocaleString()}` : '';
+    text.append(name, meta);
+    const badges = document.createElement('span');
+    badges.className = 'badges';
+    badges.append(...badgesFor(p));
+    row.append(image, text, badges);
+    row.onclick = () => { personId = p.steamId; showPeople(); };
+    return row;
+  }));
+  if (!shown.length && !$('people-note').textContent) { setText($('people-note'), people.length ? 'No players match.' : 'No players yet. Players are listed here once they join while the ToolCupboard mod is loaded.'); }
+  showPerson();
+}
+
+function field(label, value) {
+  const dt = document.createElement('dt'); dt.textContent = label;
+  const dd = document.createElement('dd'); dd.textContent = value;
+  return [dt, dd];
+}
+
+async function personAction(action, body, confirmText) {
+  const p = people.find(x => x.steamId === personId);
+  if (!p) { return; }
+  if (confirmText && await confirmAction(action[0].toUpperCase() + action.slice(1), confirmText, false) === null) { return; }
+  const error = await send(`servers/${selected}/players/${p.steamId}/${action}`, 'POST', body || {});
+  setText($('person-status'), error || 'Done.');
+  await refreshPeople();
+}
+
+function loadouts() { try { return JSON.parse(localStorage.getItem('loadouts')) || {}; } catch { return {}; } }
+function saveLoadouts(all) { try { localStorage.setItem('loadouts', JSON.stringify(all)); } catch { } }
+
+async function showPerson() {
+  const panel = $('person-panel');
+  const p = people.find(x => x.steamId === personId);
+  if (!p) { panel.replaceChildren(Object.assign(document.createElement('p'), { className: 'note', textContent: 'Choose a player to see their details and history.' })); return; }
+  // Keep what someone is typing when the list refreshes
+  if (panel.dataset.steamId === p.steamId && panel.contains(document.activeElement) && document.activeElement.matches('input')) { return; }
+  panel.dataset.steamId = p.steamId;
+
+  const card = document.createElement('div');
+  card.className = 'person-card';
+  const header = document.createElement('header');
+  const image = document.createElement('img'); image.alt = ''; avatarFor(p.steamId, image);
+  const title = document.createElement('div');
+  const name = document.createElement('strong'); name.textContent = p.name;
+  const badges = document.createElement('div'); badges.className = 'badges'; badges.style.justifyContent = 'flex-start'; badges.append(...badgesFor(p));
+  title.append(name, badges);
+  header.append(image, title);
+
+  const facts = document.createElement('dl');
+  facts.append(...field('Steam ID', p.steamId));
+  if (p.otherNames?.length) { facts.append(...field('Also known as', p.otherNames.join(', '))); }
+  if (p.state === 'online') { facts.append(...field('Ping', `${p.ping} ms`), ...field('This session', duration(p.connected))); }
+  if (p.lastIp) { facts.append(...field('Last IP', p.lastIp)); }
+  if (p.firstSeen) { facts.append(...field('First seen', new Date(p.firstSeen).toLocaleString()), ...field('Last seen', new Date(p.lastSeen).toLocaleString())); }
+  if (p.playSeconds) { facts.append(...field('Time played', duration(p.playSeconds))); }
+  if (p.banned) { facts.append(...field('Ban reason', p.banned)); }
+  if (p.mutedUntil !== undefined) { facts.append(...field('Muted', p.mutedUntil > 0 ? `until ${new Date(p.mutedUntil * 1000).toLocaleString()}` : 'until unmuted')); }
+
+  const status = document.createElement('p'); status.className = 'form-status'; status.id = 'person-status';
+  const reason = document.createElement('input'); reason.className = 'grow'; reason.placeholder = 'Reason, shown to the player'; reason.maxLength = 120; reason.setAttribute('aria-label', 'Reason');
+  const moderate = document.createElement('div'); moderate.className = 'form-actions';
+  moderate.append(reason);
+  if (p.state === 'online') { moderate.append(actionButton('Kick', () => personAction('kick', { reason: reason.value }, `Kick ${p.name}?`))); }
+  moderate.append(p.banned ? actionButton('Unban', () => personAction('unban')) : actionButton('Ban', () => personAction('ban', { reason: reason.value }, `Ban ${p.name}? They cannot join until unbanned.`), 'danger'));
+
+  const muting = document.createElement('div'); muting.className = 'form-actions';
+  if (p.mutedUntil !== undefined) { muting.append(actionButton('Unmute', () => personAction('unmute'))); }
+  else if (p.state === 'online' || p.state === 'offline') {
+    const length = document.createElement('select'); length.setAttribute('aria-label', 'Mute for');
+    for (const [value, label] of [[10, '10 minutes'], [60, '1 hour'], [1440, '1 day'], [10080, '1 week'], [0, 'Until unmuted']]) { length.add(new Option(label, value)); }
+    muting.append(length, actionButton('Mute chat', () => personAction('mute', { minutes: Number(length.value) })));
+  }
+
+  const role = document.createElement('select'); role.setAttribute('aria-label', 'Staff role');
+  for (const [value, label] of [['none', 'Player'], ['moderator', 'Moderator'], ['owner', 'Owner']]) { role.add(new Option(label, value, false, (p.role || 'none') === value)); }
+  role.onchange = () => {
+    const chosen = role.value;
+    role.value = p.role || 'none';
+    personAction('role', { role: chosen }, chosen === 'owner' ? `Make ${p.name} an owner? Owners can run every admin command, including adding other owners.` : `Make ${p.name} ${chosen === 'none' ? 'a regular player' : 'a moderator'}?`);
+  };
+  const staff = document.createElement('div'); staff.className = 'form-actions';
+  staff.append(Object.assign(document.createElement('span'), { className: 'person-meta', textContent: 'Role' }), role);
+  if (p.state === 'online') { staff.append(actionButton('Show on map', () => { showView('map'); setTimeout(() => selectMapPlayer(p.steamId, true), 300); })); }
+  const profile = document.createElement('a');
+  profile.href = `https://steamcommunity.com/profiles/${p.steamId}`; profile.target = '_blank'; profile.rel = 'noopener noreferrer'; profile.textContent = 'Steam profile';
+  staff.append(profile);
+
+  card.append(header, facts, status, moderate, muting, staff);
+
+  if (p.state === 'online') {
+    const give = document.createElement('div'); give.className = 'form-actions';
+    const item = document.createElement('input'); item.className = 'grow'; item.placeholder = 'Item short name, for example rifle.ak'; item.setAttribute('aria-label', 'Item short name'); item.autocomplete = 'off';
+    const amount = document.createElement('input'); amount.type = 'number'; amount.min = 1; amount.max = 100000; amount.value = 1; amount.style.width = '90px'; amount.setAttribute('aria-label', 'Amount');
+    give.append(item, amount, actionButton('Give', () => personAction('give', { item: item.value.trim(), amount: Number(amount.value) })));
+
+    const kits = document.createElement('div'); kits.className = 'form-actions';
+    const saved = loadouts();
+    const pick = document.createElement('select'); pick.setAttribute('aria-label', 'Saved loadout');
+    pick.add(new Option('Saved loadouts', ''));
+    for (const name of Object.keys(saved)) { pick.add(new Option(`${name} (${saved[name].length} items)`, name)); }
+    kits.append(pick, actionButton('Give loadout', async () => {
+      const list = saved[pick.value];
+      if (!list) { return; }
+      for (const [shortName, count] of list) {
+        const error = await send(`servers/${selected}/players/${p.steamId}/give`, 'POST', { item: shortName, amount: count });
+        if (error) { setText($('person-status'), `${shortName}: ${error}`); return; }
+      }
+      setText($('person-status'), `Gave the ${pick.value} loadout.`);
+      refreshPeople();
+    }), actionButton('Save as loadout', async () => {
+      const list = (await confirmAction('Save loadout', 'Short names and amounts, separated by commas. For example: rifle.ak 1, ammo.rifle 128, syringe.medical 5', true, 'Items'))?.trim();
+      if (!list) { return; }
+      const items = list.split(/[,\n]+/).map(line => line.trim().split(/\s+/)).filter(parts => parts[0]).map(([shortName, count]) => [shortName, Math.max(1, Number(count) || 1)]);
+      const title = (await confirmAction('Name the loadout', `${items.length} item${items.length === 1 ? '' : 's'}`, true, 'Name'))?.trim();
+      if (!title) { return; }
+      saveLoadouts({ ...loadouts(), [title]: items });
+      showPerson();
+    }));
+    card.append(give, kits);
+  }
+
+  const history = document.createElement('div');
+  history.className = 'person-history';
+  history.append(Object.assign(document.createElement('strong'), { textContent: 'History' }));
+  card.append(history);
+  panel.replaceChildren(card);
+
+  const events = await api(`servers/${selected}/activity?${new URLSearchParams({ q: p.steamId, days: 3650 })}`).catch(() => null) || [];
+  const interesting = events.filter(e => e.type !== 'chat').slice(0, 100);
+  history.append(...(interesting.length ? interesting : [{ none: true }]).map(e => {
+    const line = document.createElement('p');
+    line.textContent = e.none ? 'Nothing recorded yet.' : `${new Date(e.time).toLocaleString()} · ${activityLabels[e.type] || e.type}${e.detail ? ` · ${e.detail}` : ''}`;
+    return line;
+  }));
+}
+
+$('people-query').oninput = showPeople;
+$('people-filter').onchange = showPeople;
 
 // Live map: world x/z are metres from the centre, north up. The layer is the map image at its natural size, moved and scaled.
 let map = null, mapServer = null, mapPlayers = [], mapSelected = null, mapPlacing = false, mapTimer = null;

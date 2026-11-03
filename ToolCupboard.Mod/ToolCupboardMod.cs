@@ -13,7 +13,7 @@ namespace ToolCupboard.Mod
     public class ToolCupboardMod : IHarmonyModHooks
     {
         // ToolCupboard compares this with the copy it ships, and replaces an older mod
-        public const string Version = "7";
+        public const string Version = "8";
 
         public void OnLoaded(OnHarmonyModLoadedArgs args)
         {
@@ -68,6 +68,7 @@ namespace ToolCupboard.Mod
             Add("mapinfo", "The world size, seed and monuments", arg => arg.ReplyWith(MapCommands.Info()));
             Add("positions", "Where every player and sleeper is", arg => arg.ReplyWith(MapCommands.Positions()));
             Add("teleport", "toolcupboard.teleport <steamid> <x> <z> | <steamid> <steamid>", arg => arg.ReplyWith(MapCommands.Teleport(arg.GetString(0), arg.GetString(1), arg.GetString(2))));
+            Add("roster", "Who is queued or joining, plus staff, bans and mutes", arg => arg.ReplyWith(Roster.Get()));
             Add("teams", "Lists every team", arg => arg.ReplyWith(TeamsAndClans.Teams()));
             Add("team", "toolcupboard.team promote|kick|disband <teamId> [steamid]", arg => arg.ReplyWith(TeamsAndClans.Team(arg.GetString(0), arg.GetString(1), arg.GetString(2))));
             Add("clans", "Lists every clan", arg => arg.ReplyWith(TeamsAndClans.Clans()));

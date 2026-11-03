@@ -1246,6 +1246,111 @@ namespace ToolCupboard.Functions
             return server == null || (list != "teams" && list != "clans") ? null : await ModCommand(server.ID, $"toolcupboard.{list}");
         }
 
+        // Everyone online, joining or queued, plus staff, bans, mutes and every player seen before, as JSON
+        public async Task<string> GetWebRoster(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+            List<RustPlayer> online = rcon != null && rcon.IsConnected ? await rcon.GetPlayersAsync() : null;
+            Newtonsoft.Json.Linq.JToken roster = await ModCommand(server.ID, "toolcupboard.roster");
+            var known = PlayerDirectory.Load(server.ID).Values.OrderByDescending(p => p.LastSeen).ToList();
+            return Newtonsoft.Json.JsonConvert.SerializeObject(new { running = online != null, online = online ?? new List<RustPlayer>(), roster, known },
+                new Newtonsoft.Json.JsonSerializerSettings { ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() });
+        }
+
+        static readonly string[] PlayerActions = { "kick", "ban", "unban", "mute", "unmute", "role", "give" };
+
+        // Text from the page inside a quoted console argument: no quotes, line breaks or command separators
+        public static string ConsoleText(string text, int max = 120)
+        {
+            string clean = System.Text.RegularExpressions.Regex.Replace(text ?? string.Empty, "[\"\r\n;]+", " ").Trim();
+            return clean.Length > max ? clean.Substring(0, max) : clean;
+        }
+
+        /// <summary>The Rust console commands for a player action, or null with the reason. Every value is checked or cleaned first.</summary>
+        public static string[] PlayerCommands(string steamId, string action, Web.WebPlayerAction request, string name, string currentRole, out string error)
+        {
+            error = null;
+            if (!IsId(steamId) || !PlayerActions.Contains(action)) { error = "That action is not valid."; return null; }
+
+            string reason = ConsoleText(request?.Reason);
+            switch (action)
+            {
+                case "kick": return new[] { $"kick {steamId} \"{(reason.Length > 0 ? reason : "Kicked by an admin")}\"" };
+                case "ban": return new[] { $"banid {steamId} \"{ConsoleText(name, 64)}\" \"{(reason.Length > 0 ? reason : "Banned by an admin")}\"" };
+                case "unban": return new[] { $"unban {steamId}" };
+                case "unmute": return new[] { $"unmute {steamId}" };
+                case "mute":
+                    int minutes = request?.Minutes ?? 0;
+                    if (minutes < 0 || minutes > 525600) { error = "Choose how long to mute for."; return null; }
+                    // Rust reads a number with an s as seconds from now; nothing means until someone unmutes them
+                    return new[] { minutes == 0 ? $"mute {steamId}" : $"mute {steamId} {minutes * 60}s" };
+                case "give":
+                    string item = request?.Item ?? string.Empty;
+                    int amount = request?.Amount ?? 0;
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(item, @"\A[a-z0-9_.\-]{1,64}\z")) { error = "Enter an item short name, for example rifle.ak."; return null; }
+                    if (amount < 1 || amount > 100000) { error = "The amount must be between 1 and 100000."; return null; }
+                    return new[] { $"inventory.giveto {steamId} {item} {amount}" };
+                case "role":
+                    string role = request?.Role;
+                    if (role != "none" && role != "moderator" && role != "owner") { error = "Choose a role."; return null; }
+                    if (role == currentRole) { error = "The player already has that role."; return null; }
+                    var commands = new List<string>();
+                    if (currentRole == "owner") { commands.Add($"removeowner {steamId}"); }
+                    if (currentRole == "moderator") { commands.Add($"removemoderator {steamId}"); }
+                    if (role != "none") { commands.Add($"{(role == "owner" ? "ownerid" : "moderatorid")} {steamId} \"{ConsoleText(name, 64)}\" \"Set from ToolCupboard\""); }
+                    return commands.ToArray();
+            }
+
+            error = "That action is not valid.";
+            return null;
+        }
+
+        // Returns null when done, otherwise the reason it was refused
+        public async Task<string> RunWebPlayerAction(string serverId, string steamId, string action, Web.WebPlayerAction request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+            if (rcon == null || !rcon.IsConnected) { return "Start the server first."; }
+
+            string name = null, currentRole = "none";
+            if (IsId(steamId))
+            {
+                name = PlayerDirectory.Load(server.ID).TryGetValue(steamId, out KnownPlayer known) ? known.Name : null;
+                Newtonsoft.Json.Linq.JToken staff = (await ModCommand(server.ID, "toolcupboard.roster"))?["staff"];
+                currentRole = staff?.FirstOrDefault(s => s.Value<string>("steamId") == steamId)?.Value<string>("role") ?? "none";
+            }
+
+            string[] commands = PlayerCommands(steamId, action, request, name ?? steamId, currentRole, out string error);
+            if (commands == null) { return error; }
+
+            foreach (string command in commands)
+            {
+                string reply = await rcon.SendAsync(command);
+                if (reply != null && (reply.Contains("not found") || reply.Contains("Invalid") || reply.Contains("doesn't appear"))) { return reply.Trim(); }
+            }
+
+            string detail = action switch
+            {
+                "mute" => request.Minutes > 0 ? $"Muted for {request.Minutes} minutes" : "Muted until unmuted",
+                "role" => $"Role set to {request.Role}",
+                "give" => $"Given {request.Amount} x {request.Item}",
+                _ => ConsoleText(request?.Reason)
+            };
+            // Kicks and bans are already reported by the mod
+            if (action != "kick" && action != "ban")
+            {
+                try { ActivityLog.Append(server.ID, new ActivityEntry { Time = DateTime.Now, Type = action == "unmute" || action == "unban" ? action : action == "role" ? "staff" : action, SteamId = steamId, Name = name, Detail = detail.Length > 0 ? $"{detail} from the web UI" : "From the web UI" }); }
+                catch (IOException) { }
+            }
+
+            Log(server.ID, $"Players: {action} {steamId} from the web UI");
+            return null;
+        }
+
         static readonly string[] TeamActions = { "promote", "kick", "disband" };
         static readonly string[] ClanActions = { "role", "kick", "uninvite", "disband" };
 

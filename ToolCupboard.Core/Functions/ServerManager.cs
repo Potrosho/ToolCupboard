@@ -139,6 +139,8 @@ namespace ToolCupboard.Functions
                 {
                     ActivityEntry entry = ActivityEntry.FromMod(type, data, DateTime.Now);
                     if (entry != null) { ActivityLog.Append(serverId, entry); }
+                    if (type == "join") { PlayerDirectory.Joined(serverId, entry?.SteamId, entry?.Name, entry?.Detail, DateTime.Now); }
+                    if (type == "leave") { PlayerDirectory.Left(serverId, entry?.SteamId, entry?.Name, DateTime.Now); }
 
                     PlayerDeath death = type == "death" ? PlayerDeath.FromMod(data, DateTime.Now) : null;
                     if (death != null) { Leaderboard.Append(serverId, death); }

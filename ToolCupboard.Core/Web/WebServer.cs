@@ -357,6 +357,10 @@ namespace ToolCupboard.Web
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/roster", async (string id) => await _servers.Run(() => _servers.GetWebRoster(id)) is string roster ? Results.Content(roster, "application/json") : Results.NotFound());
+
+            api.MapPost("/api/servers/{id}/players/{steamId}/{action}", async (string id, string steamId, string action, WebPlayerAction body) => Refused(await _servers.Run(() => _servers.RunWebPlayerAction(id, steamId, action, body))));
+
             api.MapGet("/api/servers/{id}/map", async (string id) => await _servers.Run(() => _servers.GetWebMap(id)) is string map ? Results.Content(map, "application/json") : Results.Conflict());
 
             api.MapGet("/api/servers/{id}/positions", async (string id) => await _servers.Run(() => _servers.GetWebPositions(id)) is object positions ? Results.Content(positions.ToString(), "application/json") : Results.Conflict());
@@ -390,22 +394,6 @@ namespace ToolCupboard.Web
                 return players == null ? Results.Conflict() : Results.Json(players);
             });
 
-            api.MapPost("/api/servers/{id}/players/{steamId}/{action}", async (string id, string steamId, string action, WebCommand body) =>
-            {
-                RustRcon rcon = await _servers.Run(() => _servers.GetWebRcon(id));
-                if (rcon == null || !rcon.IsConnected) { return Results.Conflict(); }
-
-                // Checked against the live list, the id goes into a server command
-                var player = (await rcon.GetPlayersAsync())?.FirstOrDefault(p => p.SteamID == steamId);
-                if (player == null) { return Results.NotFound(); }
-
-                if (action == "kick") { await rcon.KickAsync(player, body?.Text); }
-                else if (action == "ban") { await rcon.BanAsync(player, body?.Text); }
-                else { return Results.NotFound(); }
-
-                await _servers.Run(() => { _servers.Log(id, $"Player: {action} {player.DisplayName} ({player.SteamID}) from the web UI"); return true; });
-                return Results.Ok();
-            });
         }
 
         private sealed class WebCommand
