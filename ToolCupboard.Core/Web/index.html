@@ -258,6 +258,7 @@ dialog .actions { justify-content: flex-end; }
     <div><dt>Network in / out</dt><dd id="live-network"></dd></div>
     <div><dt>Server CPU</dt><dd id="live-cpu"></dd></div>
     <div><dt>Server memory</dt><dd id="live-memory"></dd></div>
+    <div><dt>ToolCupboard mod</dt><dd id="live-mod"></dd></div>
   </dl>
   <div class="workspace">
     <section aria-label="Server workspace">
@@ -711,6 +712,7 @@ function renderSelected() {
     setText($('live-network'), `${formatRate(stats.netIn)} / ${formatRate(stats.netOut)}`);
     setText($('live-cpu'), `${stats.cpu}%`);
     setText($('live-memory'), `${(stats.memoryMb / 1024).toFixed(1)} GB`);
+    setText($('live-mod'), stats.mod ? `Loaded (v${stats.mod})` : 'Not loaded, restart the server');
   }
   $('copy-address').disabled = !server;
   $('copy-public').disabled = !server;

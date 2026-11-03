@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "oFDn5Dxu4U4=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\potro\\Documents\\Dev Projects\\CSharp projects\\WindowsGSM\\ToolCupboard.Mod\\ToolCupboard.Mod.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\potro\\.nuget\\packages\\netstandard.library.ref\\2.1.0\\netstandard.library.ref.2.1.0.nupkg.sha512"
+  ],
+  "logs": []
+}

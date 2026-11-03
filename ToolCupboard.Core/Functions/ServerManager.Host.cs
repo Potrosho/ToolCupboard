@@ -1076,7 +1076,8 @@ namespace ToolCupboard.Functions
                 netOut = info.NetworkOut,
                 cpu = Math.Round(metadata.Cpu, 1),
                 memoryMb = Math.Round(metadata.MemoryMb),
-                version = info.Version
+                version = info.Version,
+                mod = metadata.ModVersion
             };
         }
 

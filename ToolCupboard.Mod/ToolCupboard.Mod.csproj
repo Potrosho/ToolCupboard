@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Harmony mod that runs inside RustDedicated. It compiles against the Rust server's own DLLs,
+       which cannot be shipped in this repository, so it is built with build-mod.ps1 and not with the solution. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>ToolCupboard.Mod</AssemblyName>
+    <RootNamespace>ToolCupboard.Mod</RootNamespace>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>none</DebugType>
+    <RustManaged Condition="'$(RustManaged)' == ''">D:\RustGSM-Test\server\RustDedicated_Data\Managed</RustManaged>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp"><HintPath>$(RustManaged)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Facepunch.Console"><HintPath>$(RustManaged)\Facepunch.Console.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Facepunch.Network"><HintPath>$(RustManaged)\Facepunch.Network.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Facepunch.System"><HintPath>$(RustManaged)\Facepunch.System.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Facepunch.UnityEngine"><HintPath>$(RustManaged)\Facepunch.UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Rust.Global"><HintPath>$(RustManaged)\Rust.Global.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Rust.Harmony"><HintPath>$(RustManaged)\Rust.Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(RustManaged)\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(RustManaged)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(RustManaged)\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+</Project>

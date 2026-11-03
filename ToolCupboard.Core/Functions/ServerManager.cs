@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NCrontab;
+using Newtonsoft.Json.Linq;
 
 namespace ToolCupboard.Functions
 {
@@ -61,6 +62,9 @@ namespace ToolCupboard.Functions
         public RustServerInfo Stats;
         public double Cpu;
         public double MemoryMb;
+
+        // The ToolCupboard mod version reported by the running server, or null when it is not loaded
+        public string ModVersion;
     }
 
     public enum ServerStatus
@@ -946,9 +950,11 @@ namespace ToolCupboard.Functions
                         _serverMetadata[serverId].Rcon = rcon;
                         Log(server.ID, "RCON: Connected");
                         PollStats(server, rcon, p);
+                        PollModEvents(server, rcon, p);
                         await rcon.Completion;
                         _serverMetadata[serverId].Rcon = null;
                         _serverMetadata[serverId].Stats = null;
+                        _serverMetadata[serverId].ModVersion = null;
                         Log(server.ID, "RCON: Disconnected");
                     }
                 }
@@ -997,6 +1003,41 @@ namespace ToolCupboard.Functions
                 }
 
                 await Task.Delay(STATS_INTERVAL_SECONDS * 1000);
+            }
+        }
+
+        const int MOD_EVENTS_INTERVAL_SECONDS = 5;
+
+        /// <summary>Each event the ToolCupboard mod reports: the server ID, the event type, and its data.</summary>
+        public event Action<string, string, JToken> ModEventReceived;
+
+        // Collects what the ToolCupboard mod queued in game while RCON is connected
+        async void PollModEvents(ServerTable server, RustRcon rcon, Process p)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            while (rcon.IsConnected && !p.HasExited)
+            {
+                string reply = await rcon.SendAsync("toolcupboard.events");
+                JArray events = null;
+                try { events = reply != null && reply.TrimStart().StartsWith("[") ? JArray.Parse(reply) : null; }
+                catch (Newtonsoft.Json.JsonException) { }
+
+                // No reply in JSON means the mod is not loaded, for example on a server that has not restarted since it was installed
+                if (events == null) { metadata.ModVersion = null; }
+                foreach (JObject item in events?.OfType<JObject>() ?? Enumerable.Empty<JObject>())
+                {
+                    string type = item.Value<string>("type");
+                    if (type == "loaded") { metadata.ModVersion = item["data"]?.Value<string>("version"); }
+                    ModEventReceived?.Invoke(server.ID, type, item["data"]);
+                }
+
+                if (events != null && metadata.ModVersion == null)
+                {
+                    try { metadata.ModVersion = JObject.Parse(await rcon.SendAsync("toolcupboard.version") ?? "{}").Value<string>("version"); }
+                    catch (Newtonsoft.Json.JsonException) { }
+                }
+
+                await Task.Delay(MOD_EVENTS_INTERVAL_SECONDS * 1000);
             }
         }
 
@@ -1192,6 +1233,15 @@ namespace ToolCupboard.Functions
                 SetServerStatus(server, "Stopped");
 
                 return null;
+            }
+
+            try
+            {
+                if (ServerMod.Install(server.ID)) { Log(server.ID, "Mod: ToolCupboard mod installed"); }
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                Log(server.ID, $"[NOTICE] The ToolCupboard mod could not be installed: {e.Message}");
             }
 
             //Add Start File to WindowsFirewall before start
