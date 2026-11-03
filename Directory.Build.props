@@ -2,7 +2,7 @@
 
   <!-- The one place to set the version. Every edition reads it from here. -->
   <PropertyGroup>
-    <Version>0.1.2</Version>
+    <Version>0.2.0</Version>
     <Company>ToolCupboard contributors</Company>
     <Product>ToolCupboard</Product>
     <Copyright>Copyright 2019 TatLead, 2026 ToolCupboard contributors</Copyright>
