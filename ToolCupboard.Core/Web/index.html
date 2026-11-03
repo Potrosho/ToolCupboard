@@ -384,7 +384,12 @@ dialog .actions { justify-content: flex-end; }
             <label class="field wide"><span>Description</span><input id="set-description" autocomplete="off"></label>
             <label class="field wide"><span>Website URL</span><input id="set-url" autocomplete="off"></label>
             <label class="field wide"><span>Header image URL</span><input id="set-headerImage" autocomplete="off"></label>
+            <label class="field wide"><span>Tags, separated by commas (for example monthly,NA)</span><input id="set-tags" autocomplete="off"></label>
+            <label class="field"><span>Game mode</span><select id="set-gameMode"><option value="vanilla">Vanilla</option><option value="softcore">Softcore</option><option value="hardcore">Hardcore</option></select></label>
+            <label class="field"><span>Idle kick (minutes, 0 turns it off)</span><input id="set-idleKick" inputmode="numeric" autocomplete="off"></label>
           </div>
+          <label class="check"><input id="set-pve" type="checkbox">PvE (players cannot hurt each other)</label>
+          <label class="check"><input id="set-radiation" type="checkbox">Radiation</label>
           <label class="check"><input id="set-rustPlus" type="checkbox">Enable Rust+</label>
           <label class="check"><input id="set-openRouterPorts" type="checkbox">Open the game and query ports on my router (UPnP), so players outside my network can join</label>
           <p class="form-status" id="set-router-status"></p>
@@ -921,7 +926,7 @@ async function refreshBackups() {
   }
 }
 
-const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'rustPlus', 'name', 'ip', 'port', 'queryPort', 'map', 'maxPlayers', 'parameters', 'cpuPriority', 'discordAlert', 'discordMessage', 'autoStartAlert', 'autoRestartAlert', 'autoUpdateAlert', 'restartCrontabAlert', 'crashAlert', 'openRouterPorts'];
+const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'tags', 'gameMode', 'idleKick', 'pve', 'radiation', 'rustPlus', 'name', 'ip', 'port', 'queryPort', 'map', 'maxPlayers', 'parameters', 'cpuPriority', 'discordAlert', 'discordMessage', 'autoStartAlert', 'autoRestartAlert', 'autoUpdateAlert', 'restartCrontabAlert', 'crashAlert', 'openRouterPorts'];
 
 async function refreshSettings() {
   if (!selected) { return; }

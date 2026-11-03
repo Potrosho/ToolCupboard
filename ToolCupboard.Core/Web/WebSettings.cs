@@ -26,6 +26,11 @@ namespace ToolCupboard.Web
         public string Url { get; set; }
         public string HeaderImage { get; set; }
         public bool RustPlus { get; set; }
+        public string Tags { get; set; }
+        public string GameMode { get; set; }
+        public bool Pve { get; set; }
+        public bool Radiation { get; set; }
+        public string IdleKick { get; set; }
         public string Name { get; set; }
         public string Ip { get; set; }
         public string Port { get; set; }

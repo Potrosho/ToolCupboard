@@ -575,6 +575,8 @@ namespace ToolCupboard.Functions
             return null;
         }
 
+        static readonly string[] GameModes = { "vanilla", "softcore", "hardcore" };
+
         public static bool IsNumberInRange(string text, int min, int max)
         {
             return int.TryParse(text, out int value) && value >= min && value <= max;
@@ -687,6 +689,11 @@ namespace ToolCupboard.Functions
                 Url = RustConfig.Get(server.ID, "server.url"),
                 HeaderImage = RustConfig.Get(server.ID, "server.headerimage"),
                 RustPlus = RustConfig.Get(server.ID, "app.port") != "-1",
+                Tags = RustConfig.Get(server.ID, "server.tags"),
+                GameMode = RustConfig.Get(server.ID, "server.gamemode") is string mode && mode.Length > 0 ? mode : "vanilla",
+                Pve = RustConfig.Get(server.ID, "server.pve") == "true",
+                Radiation = RustConfig.Get(server.ID, "server.radiation") != "false",
+                IdleKick = RustConfig.Get(server.ID, "server.idlekick") is string idle && idle.Length > 0 ? idle : "30",
                 Name = server.Name,
                 Ip = server.IP,
                 Port = server.Port,
@@ -729,6 +736,9 @@ namespace ToolCupboard.Functions
             if (settings.CpuPriority < 0 || settings.CpuPriority > 5) { return "The CPU priority is not valid."; }
             if (settings.CpuAffinity == null || settings.CpuAffinity.Length != Environment.ProcessorCount || settings.CpuAffinity.Any(c => c != '0' && c != '1') || !settings.CpuAffinity.Contains('1')) { return "Keep at least one CPU core selected."; }
 
+            if (!GameModes.Contains(settings.GameMode)) { return "The game mode is not valid."; }
+            if (!IsNumberInRange(settings.IdleKick, 0, 1440)) { return "Idle kick must be between 0 and 1440 minutes."; }
+
             string newWebhook = settings.NewWebhook?.Trim();
             if (!string.IsNullOrEmpty(newWebhook) && !Web.WebAuth.IsDiscordWebhook(newWebhook)) { return "Enter a Discord webhook URL."; }
 
@@ -737,6 +747,12 @@ namespace ToolCupboard.Functions
 
             string error = SaveServerSettings(server, settings.WorldSize, settings.Seed, settings.TickRate, settings.SaveInterval, settings.Description, settings.Url, settings.HeaderImage, settings.RustPlus);
             if (error != null) { return error; }
+
+            RustConfig.Set(server.ID, "server.tags", (settings.Tags ?? string.Empty).Replace(" ", string.Empty));
+            RustConfig.Set(server.ID, "server.gamemode", settings.GameMode);
+            RustConfig.Set(server.ID, "server.pve", settings.Pve ? "true" : "false");
+            RustConfig.Set(server.ID, "server.radiation", settings.Radiation ? "true" : "false");
+            RustConfig.Set(server.ID, "server.idlekick", settings.IdleKick);
 
             ServerMetadata metadata = _serverMetadata[int.Parse(server.ID)];
             void SaveFlag(string name, bool value) => ServerConfig.SetSetting(server.ID, name, value ? "1" : "0");
