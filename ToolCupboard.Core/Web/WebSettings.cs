@@ -95,6 +95,21 @@ namespace ToolCupboard.Web
         public string File { get; set; }
     }
 
+    public class WebDemoAction
+    {
+        public string SteamId { get; set; }
+        public string Action { get; set; }
+        public int? Minutes { get; set; }
+    }
+
+    public class WebDemoNote
+    {
+        public string Path { get; set; }
+        public bool Pinned { get; set; }
+        public string Note { get; set; }
+        public bool Delete { get; set; }
+    }
+
     public class WebPlayerAction
     {
         public string Reason { get; set; }

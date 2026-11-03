@@ -107,6 +107,10 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .note-body a { color: var(--color-focus); }
 #note-text { font-family: var(--font-mono); }
 @media (max-width: 720px) { #notes-view { grid-template-columns: minmax(0, 1fr); } }
+.demo-row td:last-child { width: 1%; white-space: nowrap; }
+.demo-row input[type="text"] { width: 100%; min-width: 120px; }
+.demo-help { color: var(--color-muted); font-size: 14px; }
+.demo-help code { font-family: var(--font-mono); }
 #people-view { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr); gap: 16px; align-items: start; }
 .people-bar { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; margin-bottom: 8px; }
 .people-list button.person { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 0; padding: 6px 8px; border: 0; border-bottom: 1px solid var(--color-rule); border-radius: 0; text-align: left; white-space: normal; }
@@ -340,6 +344,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-reports" aria-selected="false" aria-controls="reports-view">Reports</button>
         <button role="tab" id="tab-people" aria-selected="false" aria-controls="people-view">Players</button>
         <button role="tab" id="tab-map" aria-selected="false" aria-controls="map-view">Map</button>
+        <button role="tab" id="tab-demos" aria-selected="false" aria-controls="demos-view">Demos</button>
         <button role="tab" id="tab-groups" aria-selected="false" aria-controls="groups-view">Teams</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-board" aria-selected="false" aria-controls="board-view">Leaderboard</button>
@@ -402,6 +407,32 @@ dialog .actions { justify-content: flex-end; }
           <p class="note" id="people-note"></p>
         </div>
         <div id="person-panel"><p class="note">Choose a player to see their details and history.</p></div>
+      </div>
+      <div id="demos-view" class="panel groups" role="tabpanel" hidden>
+        <div>
+          <h2>Record</h2>
+          <div class="form-actions">
+            <select id="demo-player" aria-label="Player to record"></select>
+            <select id="demo-length" aria-label="Record for"><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="0">Until they leave</option></select>
+            <button type="button" id="demo-record">Start recording</button>
+          </div>
+          <p class="form-status" id="demo-status"></p>
+          <table id="demo-live" hidden><thead><tr><th scope="col">Recording now</th><th scope="col" class="num">Length</th><th scope="col" class="num">Size</th><th scope="col"><span hidden>Actions</span></th></tr></thead><tbody></tbody></table>
+          <p class="report-meta" id="demo-space"></p>
+        </div>
+        <div>
+          <h2>Always record</h2>
+          <p class="report-meta">These players are recorded every time they join, including after a reconnect. You can add someone who is offline by Steam ID.</p>
+          <div class="form-actions"><input id="demo-auto-id" placeholder="Steam ID" inputmode="numeric" autocomplete="off" aria-label="Steam ID to always record"><button type="button" id="demo-auto-add">Add</button></div>
+          <div id="demo-auto"></div>
+        </div>
+        <div>
+          <h2>Saved demos</h2>
+          <div class="form-actions"><button type="button" id="demo-zip" disabled>Download selected as zip</button></div>
+          <table id="demo-saved" hidden><thead><tr><th scope="col"><span hidden>Select</span></th><th scope="col">Player</th><th scope="col">Started</th><th scope="col" class="num">Length</th><th scope="col" class="num">Size</th><th scope="col">Note</th><th scope="col"><span hidden>Actions</span></th></tr></thead><tbody></tbody></table>
+          <p class="note" id="demo-none">No demos yet.</p>
+          <p class="demo-help">To watch a demo: download it, put it in your Rust game folder (for example <code>Steam\steamapps\common\Rust\demos</code>), start Rust, press F1 and type <code>demo.play "demos/the-file-name.dem"</code>.</p>
+        </div>
       </div>
       <div id="map-view" class="panel" role="tabpanel" hidden>
         <div>
@@ -773,7 +804,11 @@ function confirmAction(title, text, wantsReason, inputLabel = 'Reason (shown to 
     $('confirm-reason-text').textContent = inputLabel;
     $('confirm-reason').value = '';
     dialog.returnValue = 'cancel';
-    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok' ? $('confirm-reason').value : null), { once: true });
+    // Settles on the button press itself; the close event comes later and not at all while the page is not being drawn
+    let settled = false;
+    const finish = ok => { if (!settled) { settled = true; resolve(ok ? $('confirm-reason').value : null); } };
+    dialog.querySelector('form').addEventListener('submit', event => finish(event.submitter?.value === 'ok'), { once: true });
+    dialog.addEventListener('close', () => finish(dialog.returnValue === 'ok'), { once: true });
     dialog.showModal();
   });
 }
@@ -992,7 +1027,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', people: 'people-view', map: 'map-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', demos: 'demos-view', people: 'people-view', map: 'map-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -1009,6 +1044,7 @@ function refreshView() {
   if (view === 'groups') { refreshGroups(); }
   if (view === 'map') { refreshMap(); }
   if (view === 'people') { refreshPeople(); }
+  if (view === 'demos') { refreshDemos(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1318,11 +1354,104 @@ $('note-form').onsubmit = async event => {
 const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned', report: 'Reported', unban: 'Unbanned', mute: 'Muted', unmute: 'Unmuted', staff: 'Role changed', give: 'Given items' };
 const reportStatuses = { open: 'Open', looking: 'Being looked at', resolved: 'Resolved', dismissed: 'Dismissed' };
 
+let demoTimer = null;
+const demoChosen = new Set();
+
+async function demoAction(body) {
+  const error = await send(`servers/${selected}/demos`, 'POST', body);
+  setText($('demo-status'), error || 'Done.');
+  setTimeout(refreshDemos, 1500);
+}
+
+async function refreshDemos() {
+  if (!selected) { return; }
+  const [data, roster] = await Promise.all([api(`servers/${selected}/demos`).catch(() => null), api(`servers/${selected}/roster`).catch(() => null)]);
+  if (!data) { setText($('demo-status'), 'Could not load demos.'); return; }
+
+  const online = roster?.online || [];
+  const pick = $('demo-player'), keep = pick.value;
+  pick.replaceChildren(...(online.length ? online.map(p => new Option(p.displayName, p.steamID)) : [new Option('No one is online', '')]));
+  if (online.some(p => p.steamID === keep)) { pick.value = keep; }
+  $('demo-record').disabled = !online.length;
+
+  const live = data.recording || [];
+  $('demo-live').hidden = !live.length;
+  $('demo-live').tBodies[0].replaceChildren(...live.map(r => {
+    const row = document.createElement('tr');
+    row.insertCell().textContent = r.name;
+    Object.assign(row.insertCell(), { className: 'num', textContent: duration(r.seconds) });
+    Object.assign(row.insertCell(), { className: 'num', textContent: formatSize(r.bytes) });
+    row.insertCell().append(actionButton('Stop', () => demoAction({ steamId: r.steamId, action: 'stop' })));
+    return row;
+  }));
+  setText($('demo-space'), data.freeBytes >= 0 ? `${formatSize(data.freeBytes)} free on the server disk` : '');
+
+  $('demo-auto').replaceChildren(...(data.auto || []).map(a => {
+    const line = document.createElement('div');
+    line.className = 'form-actions';
+    line.append(Object.assign(document.createElement('span'), { textContent: `${a.name}${a.name === a.steamId ? '' : ` (${a.steamId})`}` }), actionButton('Remove', () => demoAction({ steamId: a.steamId, action: 'auto-off' })));
+    return line;
+  }));
+
+  const saved = data.demos || [];
+  for (const path of [...demoChosen]) { if (!saved.some(d => d.path === path)) { demoChosen.delete(path); } }
+  $('demo-saved').hidden = !saved.length;
+  $('demo-none').hidden = !!saved.length;
+  $('demo-saved').tBodies[0].replaceChildren(...saved.sort((a, b) => b.pinned - a.pinned || new Date(b.started) - new Date(a.started)).map(d => {
+    const row = document.createElement('tr');
+    row.className = 'demo-row';
+    const choose = Object.assign(document.createElement('input'), { type: 'checkbox', checked: demoChosen.has(d.path) });
+    choose.setAttribute('aria-label', `Select the demo of ${d.name} from ${new Date(d.started).toLocaleString()}`);
+    choose.onchange = () => { choose.checked ? demoChosen.add(d.path) : demoChosen.delete(d.path); $('demo-zip').disabled = !demoChosen.size; };
+    row.insertCell().append(choose);
+    row.insertCell().textContent = `${d.pinned ? 'Pinned · ' : ''}${d.name}`;
+    const when = row.insertCell();
+    when.textContent = new Date(d.started).toLocaleString();
+    when.title = [d.startedBy, d.endedBy].filter(Boolean).join('. ');
+    Object.assign(row.insertCell(), { className: 'num', textContent: duration(d.seconds) });
+    Object.assign(row.insertCell(), { className: 'num', textContent: formatSize(d.bytes) });
+    const note = Object.assign(document.createElement('input'), { type: 'text', value: d.note || '', placeholder: 'What happens in it', maxLength: 1000 });
+    note.setAttribute('aria-label', 'Note');
+    const saveNote = async pinned => { setText($('demo-status'), await send(`servers/${selected}/demos`, 'PUT', { path: d.path, pinned, note: note.value }) || 'Saved.'); refreshDemos(); };
+    note.onchange = () => saveNote(d.pinned);
+    row.insertCell().append(note);
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    actions.append(
+      actionButton('Download', () => downloadFile(d.path, d.path.split('/').slice(1).join('_'))),
+      actionButton(d.pinned ? 'Unpin' : 'Pin', () => saveNote(!d.pinned)),
+      actionButton('Delete', async () => {
+        if (await confirmAction('Delete demo', `Delete the demo of ${d.name} from ${new Date(d.started).toLocaleString()}? This cannot be undone.`, false) === null) { return; }
+        setText($('demo-status'), await send(`servers/${selected}/demos`, 'PUT', { path: d.path, delete: true }) || 'Deleted.');
+        refreshDemos();
+      }, 'danger'));
+    if (d.pinned) { actions.lastChild.disabled = true; actions.lastChild.title = 'Unpin it first'; }
+    row.insertCell().append(actions);
+    return row;
+  }));
+  $('demo-zip').disabled = !demoChosen.size;
+
+  clearTimeout(demoTimer);
+  demoTimer = setTimeout(() => { if (view === 'demos') { refreshDemos(); } }, 10000);
+}
+
+$('demo-record').onclick = () => demoAction({ steamId: $('demo-player').value, action: 'record', minutes: Number($('demo-length').value) });
+$('demo-auto-add').onclick = () => { const id = $('demo-auto-id').value.trim(); $('demo-auto-id').value = ''; demoAction({ steamId: id, action: 'auto-on' }); };
+$('demo-zip').onclick = async () => {
+  const response = await fetch(`/api/servers/${selected}/demos/zip?paths=${encodeURIComponent([...demoChosen].join(','))}`, { headers: { 'X-ToolCupboard-Token': token || '' } }).catch(() => null);
+  if (!response?.ok) { setText($('demo-status'), 'Could not make the zip.'); return; }
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(await response.blob());
+  link.download = 'demos.zip';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+};
+
 let people = [], peopleServer = null, personId = null, peopleTimer = null;
 
 function duration(seconds) {
   const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60);
-  return h ? `${h} h ${m} min` : `${m} min`;
+  return h ? `${h} h ${m} min` : m ? `${m} min` : `${Math.round(seconds)} s`;
 }
 
 // One entry per player, from everyone seen before plus who is on, joining or queued right now

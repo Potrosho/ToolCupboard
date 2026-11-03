@@ -357,6 +357,31 @@ namespace ToolCupboard.Web
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/demos", async (string id) => await _servers.Run(() => _servers.GetWebDemos(id)) is string demos ? Results.Content(demos, "application/json") : Results.NotFound());
+
+            api.MapPost("/api/servers/{id}/demos", async (string id, WebDemoAction body) => Refused(await _servers.Run(() => _servers.RunWebDemoAction(id, body))));
+
+            api.MapPut("/api/servers/{id}/demos", async (string id, WebDemoNote body) => Refused(await _servers.Run(() => _servers.UpdateWebDemo(id, body))));
+
+            // Several demos as one zip. The paths are checked against the demos folder one by one.
+            api.MapGet("/api/servers/{id}/demos/zip", async (string id, string paths, HttpContext context) =>
+            {
+                ServerTable server = await _servers.Run(() => _servers.GetServerTableById(id));
+                if (server == null || string.IsNullOrEmpty(paths)) { return Results.NotFound(); }
+
+                context.Response.ContentType = "application/zip";
+                context.Response.Headers["Content-Disposition"] = "attachment; filename=\"demos.zip\"";
+                // ZipArchive writes synchronously, so it goes to a file first and is then streamed
+                string temp = Path.GetTempFileName();
+                try
+                {
+                    using (FileStream file = File.Create(temp)) { Demos.WriteZip(server.ID, paths.Split(','), file); }
+                    await context.Response.SendFileAsync(temp);
+                }
+                finally { File.Delete(temp); }
+                return Results.Empty;
+            });
+
             api.MapGet("/api/servers/{id}/roster", async (string id) => await _servers.Run(() => _servers.GetWebRoster(id)) is string roster ? Results.Content(roster, "application/json") : Results.NotFound());
 
             api.MapPost("/api/servers/{id}/players/{steamId}/{action}", async (string id, string steamId, string action, WebPlayerAction body) => Refused(await _servers.Run(() => _servers.RunWebPlayerAction(id, steamId, action, body))));

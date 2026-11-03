@@ -1351,6 +1351,117 @@ namespace ToolCupboard.Functions
             return null;
         }
 
+        // Who is recording, who is recorded on every join, the saved demos, and the free space for them, as JSON
+        public async Task<string> GetWebDemos(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+            bool running = rcon != null && rcon.IsConnected;
+            Newtonsoft.Json.Linq.JToken recording = running ? await ModCommand(server.ID, "toolcupboard.recording") : null;
+            List<string> auto = running ? Demos.ParseRecordList(await rcon.SendAsync("demo.recordlist")) : new List<string>();
+            Dictionary<string, KnownPlayer> known = PlayerDirectory.Load(server.ID);
+            string NameOf(string id) => known.TryGetValue(id, out KnownPlayer p) ? p.Name : id;
+
+            long free = -1;
+            try { free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(ServerPath.GetServersServerFiles(server.ID)))).AvailableFreeSpace; }
+            catch (Exception e) when (e is IOException || e is ArgumentException || e is UnauthorizedAccessException) { }
+
+            return Newtonsoft.Json.JsonConvert.SerializeObject(new
+            {
+                running,
+                recording,
+                auto = auto.Select(id => new { steamId = id, name = NameOf(id) }),
+                demos = Demos.List(server.ID).Select(d => new { d.Path, d.SteamId, name = NameOf(d.SteamId), d.Started, d.Seconds, d.Bytes, d.Pinned, d.Note, d.StartedBy, d.EndedBy }),
+                freeBytes = free
+            }, new Newtonsoft.Json.JsonSerializerSettings { ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() });
+        }
+
+        // Returns null when done, otherwise the reason it was refused
+        public async Task<string> RunWebDemoAction(string serverId, Web.WebDemoAction request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+            if (rcon == null || !rcon.IsConnected) { return "Start the server first."; }
+
+            string steamId = request?.SteamId;
+            if (!IsId(steamId)) { return "Choose a player."; }
+
+            switch (request.Action)
+            {
+                case "record":
+                    int minutes = request.Minutes ?? 0;
+                    if (minutes < 0 || minutes > 24 * 60) { return "Choose how long to record."; }
+                    string reply = await rcon.SendAsync($"demo.record {steamId}");
+                    if (reply != null && reply.IndexOf("not found", StringComparison.OrdinalIgnoreCase) >= 0) { return "That player is not online."; }
+
+                    string file = (await ModCommand(server.ID, "toolcupboard.recording"))?.FirstOrDefault(r => r.Value<string>("steamId") == steamId)?.Value<string>("file");
+                    if (file != null && Demos.IsDemoPath(file.Replace('\\', '/'))) { Demos.ChangeNotes(server.ID, file.Replace('\\', '/'), n => n.StartedBy = minutes > 0 ? $"Recorded for {minutes} minutes from the web UI" : "Recorded until they leave, from the web UI"); }
+
+                    // shortcut: the timer lives in ToolCupboard, so a timed recording runs until the player leaves if ToolCupboard restarts. Move it into the mod if that matters.
+                    if (minutes > 0) { _ = StopDemoLater(server, steamId, file, minutes); }
+                    Log(server.ID, $"Demos: recording {steamId}{(minutes > 0 ? $" for {minutes} minutes" : string.Empty)} from the web UI");
+                    return null;
+
+                case "stop":
+                    string stopped = (await ModCommand(server.ID, "toolcupboard.recording"))?.FirstOrDefault(r => r.Value<string>("steamId") == steamId)?.Value<string>("file")?.Replace('\\', '/');
+                    await rcon.SendAsync($"demo.stop {steamId}");
+                    if (Demos.IsDemoPath(stopped)) { Demos.ChangeNotes(server.ID, stopped, n => n.EndedBy = "Stopped from the web UI"); }
+                    Log(server.ID, $"Demos: stopped recording {steamId} from the web UI");
+                    return null;
+
+                case "auto-on":
+                case "auto-off":
+                    List<string> list = Demos.ParseRecordList(await rcon.SendAsync("demo.recordlist"));
+                    list.Remove(steamId);
+                    if (request.Action == "auto-on") { list.Add(steamId); }
+                    await rcon.SendAsync($"demo.recordlistmode 0");
+                    await rcon.SendAsync($"demo.recordlist \"{string.Join(",", list)}\"");
+                    await rcon.SendAsync("server.writecfg"); // demo.recordlist is a saved setting, so it survives restarts
+                    Log(server.ID, $"Demos: {(request.Action == "auto-on" ? "always recording" : "no longer always recording")} {steamId} from the web UI");
+                    return null;
+
+                default:
+                    return "That action is not valid.";
+            }
+        }
+
+        async Task StopDemoLater(ServerTable server, string steamId, string file, int minutes)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(minutes));
+            RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+            if (rcon == null || !rcon.IsConnected) { return; }
+
+            // Only stop the same recording, not a new one started since
+            string now = (await ModCommand(server.ID, "toolcupboard.recording"))?.FirstOrDefault(r => r.Value<string>("steamId") == steamId)?.Value<string>("file");
+            if (now == null || now != file) { return; }
+
+            await rcon.SendAsync($"demo.stop {steamId}");
+            if (Demos.IsDemoPath(file.Replace('\\', '/'))) { Demos.ChangeNotes(server.ID, file.Replace('\\', '/'), n => n.EndedBy = "Stopped when the time was up"); }
+        }
+
+        // Returns null when saved, otherwise the reason it was refused
+        public string UpdateWebDemo(string serverId, Web.WebDemoNote request)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            if (!Demos.IsDemoPath(request?.Path) || !File.Exists(Demos.FullPath(server.ID, request.Path))) { return "That demo does not exist."; }
+            if ((request.Note ?? string.Empty).Length > 1000) { return "The note is too long."; }
+
+            if (request.Delete)
+            {
+                if (Demos.LoadNotes(server.ID).TryGetValue(request.Path, out DemoNotes notes) && notes.Pinned) { return "Unpin the demo before deleting it."; }
+                File.Delete(Demos.FullPath(server.ID, request.Path));
+                Log(server.ID, $"Demos: deleted {request.Path} from the web UI");
+                return null;
+            }
+
+            Demos.ChangeNotes(server.ID, request.Path, n => { n.Pinned = request.Pinned; n.Note = request.Note ?? string.Empty; });
+            return null;
+        }
+
         static readonly string[] TeamActions = { "promote", "kick", "disband" };
         static readonly string[] ClanActions = { "role", "kick", "uninvite", "disband" };
 
