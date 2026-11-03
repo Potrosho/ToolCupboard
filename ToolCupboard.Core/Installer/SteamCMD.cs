@@ -387,7 +387,27 @@ namespace ToolCupboard.Installer
             return matches[0].Groups[1].Value;
         }
 
-        public async Task<string> GetRemoteBuild(string appId)
+        // The build of one branch in app_info_print output, for example "public" or "staging"
+        public static string ParseBuild(string output, string branch, out DateTimeOffset? updated)
+        {
+            string block = $"\"{Regex.Escape(branch)}\"\\s*{{[^}}]*?";
+            Match build = Regex.Match(output, block + "\"buildid\"\\s*\"(\\d+)\"");
+            Match time = Regex.Match(output, block + "\"timeupdated\"\\s*\"(\\d+)\"");
+            updated = time.Success ? DateTimeOffset.FromUnixTimeSeconds(long.Parse(time.Groups[1].Value)) : (DateTimeOffset?)null;
+            return build.Success ? build.Groups[1].Value : string.Empty;
+        }
+
+        // The branch the installed files came from, read from the app manifest
+        public static string GetLocalBranch(string serverId, string appId)
+        {
+            string manifestPath = Path.Combine(ServerPath.GetServersServerFiles(serverId), "steamapps", $"appmanifest_{appId}.acf");
+            if (!File.Exists(manifestPath)) { return string.Empty; }
+
+            Match key = Regex.Match(File.ReadAllText(manifestPath), "\"BetaKey\"\\s*\"([^\"]*)\"");
+            return key.Success && key.Groups[1].Value.Length > 0 ? key.Groups[1].Value : "public";
+        }
+
+        public async Task<string> GetRemoteBuild(string appId, string branch = "public")
         {
             string exePath = Path.Combine(_installPath, "steamcmd.exe");
             if (!File.Exists(exePath))
@@ -441,19 +461,10 @@ namespace ToolCupboard.Installer
             SendEnterPreventFreeze(p);
 
             string output = await p.StandardOutput.ReadToEndAsync();
-            Regex regex = new Regex("\"public\"\r\n.{0,}{\r\n.{0,}\"buildid\".{1,}\"(.*?)\"");
-            var matches = regex.Matches(output);
-
-            if (matches.Count < 1 || matches[1].Groups.Count < 2)
-            {
-                Error = $"Fail to get remote build";
-                return string.Empty;
-            }
-
-            Match buildTime = Regex.Match(output, "\"public\"\\s*{[^}]*?\"timeupdated\"\\s*\"(\\d+)\"");
-            RemoteBuildTime = buildTime.Success ? DateTimeOffset.FromUnixTimeSeconds(long.Parse(buildTime.Groups[1].Value)) : (DateTimeOffset?)null;
-
-            return matches[0].Groups[1].Value;
+            string build = ParseBuild(output, branch, out DateTimeOffset? updated);
+            RemoteBuildTime = updated;
+            if (build.Length == 0) { Error = $"Fail to get remote build of the {branch} branch"; }
+            return build;
         }
 
         public void CreateUserDataTxtIfNotExist()

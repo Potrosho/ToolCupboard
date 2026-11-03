@@ -712,6 +712,7 @@ namespace ToolCupboard.Functions
                 RestartCrontabAlert = metadata.RestartCrontabAlert,
                 CrashAlert = metadata.CrashAlert,
                 OpenRouterPorts = metadata.OpenRouterPorts,
+                Branch = ServerConfig.GetSetting(server.ID, ServerConfig.SettingName.SteamBranch) == "staging" ? "staging" : "public",
                 RouterStatus = metadata.RouterStatus
             };
         }
@@ -737,6 +738,7 @@ namespace ToolCupboard.Functions
             if (settings.CpuAffinity == null || settings.CpuAffinity.Length != Environment.ProcessorCount || settings.CpuAffinity.Any(c => c != '0' && c != '1') || !settings.CpuAffinity.Contains('1')) { return "Keep at least one CPU core selected."; }
 
             if (!GameModes.Contains(settings.GameMode)) { return "The game mode is not valid."; }
+            if (settings.Branch != "public" && settings.Branch != "staging") { return "The branch is not valid."; }
             if (!IsNumberInRange(settings.IdleKick, 0, 1440)) { return "Idle kick must be between 0 and 1440 minutes."; }
 
             string newWebhook = settings.NewWebhook?.Trim();
@@ -798,6 +800,7 @@ namespace ToolCupboard.Functions
             metadata.RestartCrontabAlert = settings.RestartCrontabAlert; SaveFlag(ServerConfig.SettingName.RestartCrontabAlert, settings.RestartCrontabAlert);
             metadata.CrashAlert = settings.CrashAlert; SaveFlag(ServerConfig.SettingName.CrashAlert, settings.CrashAlert);
             SetOpenRouterPorts(server, settings.OpenRouterPorts);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.SteamBranch, settings.Branch);
 
             if (settings.ClearWebhook || !string.IsNullOrEmpty(newWebhook))
             {
@@ -896,6 +899,24 @@ namespace ToolCupboard.Functions
             RustMods.WritePlugin(server.ID, framework, name, System.Text.Encoding.UTF8.GetBytes(upload.Text));
             Log(server.ID, $"Mods: Added plugin {name} from the web UI");
             return null;
+        }
+
+        // Asks Steam for the latest build of the chosen branch, which takes a few seconds
+        public async Task<object> GetWebBuild(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+
+            var rust = new GameServer.RUST(new ServerConfig(server.ID));
+            string latest = await rust.GetRemoteBuild();
+            return new
+            {
+                branch = rust.Branch,
+                installed = rust.GetLocalBuild(),
+                installedBranch = Installer.SteamCMD.GetLocalBranch(server.ID, rust.AppId),
+                latest,
+                error = latest.Length == 0 ? rust.Error : null
+            };
         }
 
         public RustPlugin[] GetWebPlugins(string serverId)

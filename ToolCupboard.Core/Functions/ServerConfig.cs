@@ -45,6 +45,7 @@ namespace ToolCupboard.Functions
             public const string WipeNewSeed = "wipenewseed";
             public const string WipeLast = "wipelast";
             public const string OpenRouterPorts = "openrouterports";
+            public const string SteamBranch = "steambranch";
         }
 
         public string ServerID;

@@ -348,6 +348,8 @@ namespace ToolCupboard.Web
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/build", async (string id) => await _servers.Run(() => _servers.GetWebBuild(id)) is object build ? Results.Json(build) : Results.NotFound());
+
             api.MapGet("/api/servers/{id}/players", async (string id) =>
             {
                 RustRcon rcon = await _servers.Run(() => _servers.GetWebRcon(id));

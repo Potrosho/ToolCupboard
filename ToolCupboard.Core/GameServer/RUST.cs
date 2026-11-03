@@ -125,9 +125,13 @@ namespace ToolCupboard.GameServer
             return p;
         }
 
+        // "public" or "staging", chosen in the server settings
+        public string Branch => Functions.ServerConfig.GetSetting(_serverData.ServerID, Functions.ServerConfig.SettingName.SteamBranch) == "staging" ? "staging" : "public";
+
         public async Task<Process> Update(bool validate = false, string custom = null)
         {
-            var (p, error) = await Installer.SteamCMD.UpdateEx(_serverData.ServerID, AppId, validate, custom: custom);
+            // Naming the branch every time also switches back from staging to public
+            var (p, error) = await Installer.SteamCMD.UpdateEx(_serverData.ServerID, AppId, validate, custom: custom ?? $"-beta {Branch}");
             Error = error;
             return p;
         }
@@ -152,7 +156,9 @@ namespace ToolCupboard.GameServer
         public async Task<string> GetRemoteBuild()
         {
             var steamCMD = new Installer.SteamCMD();
-            return await steamCMD.GetRemoteBuild(AppId);
+            string build = await steamCMD.GetRemoteBuild(AppId, Branch);
+            Error = steamCMD.Error;
+            return build;
         }
     }
 }

@@ -51,6 +51,7 @@ namespace ToolCupboard.Web
         public bool RestartCrontabAlert { get; set; }
         public bool CrashAlert { get; set; }
         public bool OpenRouterPorts { get; set; }
+        public string Branch { get; set; }
         public string RouterStatus { get; set; }
     }
 

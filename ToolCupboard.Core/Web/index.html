@@ -448,6 +448,9 @@ dialog .actions { justify-content: flex-end; }
           </div>
           <label class="check"><input id="set-pve" type="checkbox">PvE (players cannot hurt each other)</label>
           <label class="check"><input id="set-radiation" type="checkbox">Radiation</label>
+          <label class="field"><span>Game branch</span><select id="set-branch"><option value="public">Public (release)</option><option value="staging">Staging (test builds)</option></select></label>
+          <p class="note">Switching downloads the other build at the next update. Oxide and Carbon may not support staging builds yet.</p>
+          <div class="form-actions"><button type="button" id="build-check">Check build</button><span class="form-status" id="build-status"></span></div>
           <label class="check"><input id="set-rustPlus" type="checkbox">Enable Rust+</label>
           <label class="check"><input id="set-openRouterPorts" type="checkbox">Open the game and query ports on my router (UPnP), so players outside my network can join</label>
           <p class="form-status" id="set-router-status"></p>
@@ -1256,7 +1259,19 @@ async function refreshBackups() {
   }
 }
 
-const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'tags', 'gameMode', 'idleKick', 'pve', 'radiation', 'rustPlus', 'name', 'ip', 'port', 'queryPort', 'map', 'maxPlayers', 'parameters', 'cpuPriority', 'discordAlert', 'discordMessage', 'autoStartAlert', 'autoRestartAlert', 'autoUpdateAlert', 'restartCrontabAlert', 'crashAlert', 'openRouterPorts'];
+const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'tags', 'gameMode', 'idleKick', 'pve', 'radiation', 'rustPlus', 'name', 'ip', 'port', 'queryPort', 'map', 'maxPlayers', 'parameters', 'cpuPriority', 'discordAlert', 'discordMessage', 'autoStartAlert', 'autoRestartAlert', 'autoUpdateAlert', 'restartCrontabAlert', 'crashAlert', 'openRouterPorts', 'branch'];
+
+$('build-check').onclick = async () => {
+  $('build-check').disabled = true;
+  setText($('build-status'), 'Asking Steam');
+  const build = await api(`servers/${selected}/build`).catch(() => null);
+  $('build-check').disabled = false;
+  if (!build) { setText($('build-status'), 'Could not check the build.'); return; }
+  const installed = build.installed ? `Installed: build ${build.installed} (${build.installedBranch}).` : 'Installed build unknown.';
+  const latest = build.latest ? ` Latest ${build.branch}: build ${build.latest}.` : ` Could not get the latest ${build.branch} build.`;
+  const state = !build.installed || !build.latest ? '' : build.installed === build.latest ? ' Up to date.' : ' Run Update to get it.';
+  setText($('build-status'), installed + latest + state);
+};
 
 async function refreshSettings() {
   if (!selected) { return; }
