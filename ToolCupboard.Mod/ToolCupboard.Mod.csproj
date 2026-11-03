@@ -10,16 +10,23 @@
     <Nullable>disable</Nullable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>none</DebugType>
+    <!-- Compile against the framework Rust runs on (Unity's mscorlib), not the generic .NET Standard one -->
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
     <RustManaged Condition="'$(RustManaged)' == ''">D:\RustGSM-Test\server\RustDedicated_Data\Managed</RustManaged>
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="mscorlib"><HintPath>$(RustManaged)\mscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="netstandard"><HintPath>$(RustManaged)\netstandard.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System"><HintPath>$(RustManaged)\System.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Core"><HintPath>$(RustManaged)\System.Core.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Assembly-CSharp"><HintPath>$(RustManaged)\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Facepunch.Console"><HintPath>$(RustManaged)\Facepunch.Console.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Facepunch.Network"><HintPath>$(RustManaged)\Facepunch.Network.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Facepunch.System"><HintPath>$(RustManaged)\Facepunch.System.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Facepunch.UnityEngine"><HintPath>$(RustManaged)\Facepunch.UnityEngine.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Rust.Global"><HintPath>$(RustManaged)\Rust.Global.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Rust.Clans"><HintPath>$(RustManaged)\Rust.Clans.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Rust.Harmony"><HintPath>$(RustManaged)\Rust.Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="0Harmony"><HintPath>$(RustManaged)\0Harmony.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(RustManaged)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>

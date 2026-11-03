@@ -95,6 +95,12 @@ namespace ToolCupboard.Web
         public string File { get; set; }
     }
 
+    public class WebGroupAction
+    {
+        public string SteamId { get; set; }
+        public string RoleId { get; set; }
+    }
+
     public class WebReportUpdate
     {
         public string Status { get; set; }

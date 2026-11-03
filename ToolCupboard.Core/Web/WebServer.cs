@@ -357,6 +357,10 @@ namespace ToolCupboard.Web
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
 
+            api.MapGet("/api/servers/{id}/groups/{list}", async (string id, string list) => await _servers.Run(() => _servers.GetWebTeams(id, list)) is object groups ? Results.Content(groups.ToString(), "application/json") : Results.Conflict());
+
+            api.MapPost("/api/servers/{id}/groups/{kind}/{groupId}/{action}", async (string id, string kind, string groupId, string action, WebGroupAction body) => Refused(await _servers.Run(() => _servers.RunWebGroupAction(id, kind, groupId, action, body?.SteamId, body?.RoleId))));
+
             api.MapGet("/api/servers/{id}/reports", async (string id) => await _servers.Run(() => _servers.GetWebReports(id)) is object reports ? Results.Json(reports) : Results.NotFound());
 
             api.MapPut("/api/servers/{id}/reports/{reportId}", async (string id, string reportId, WebReportUpdate body) => Refused(await _servers.Run(() => _servers.UpdateWebReport(id, reportId, body?.Status, body?.Note))));

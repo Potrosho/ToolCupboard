@@ -13,7 +13,7 @@ namespace ToolCupboard.Mod
     public class ToolCupboardMod : IHarmonyModHooks
     {
         // ToolCupboard compares this with the copy it ships, and replaces an older mod
-        public const string Version = "4";
+        public const string Version = "5";
 
         public void OnLoaded(OnHarmonyModLoadedArgs args)
         {
@@ -64,6 +64,10 @@ namespace ToolCupboard.Mod
             Add("version", "The ToolCupboard mod version", arg => arg.ReplyWith(JsonConvert.SerializeObject(new { version = ToolCupboardMod.Version })));
             Add("events", "Returns and clears the queued ToolCupboard events", arg => arg.ReplyWith(Events.Take()));
             Add("context", "Where two players are relative to each other: toolcupboard.context <steamid> <steamid>", arg => arg.ReplyWith(Context(arg.GetString(0), arg.GetString(1))));
+            Add("teams", "Lists every team", arg => arg.ReplyWith(TeamsAndClans.Teams()));
+            Add("team", "toolcupboard.team promote|kick|disband <teamId> [steamid]", arg => arg.ReplyWith(TeamsAndClans.Team(arg.GetString(0), arg.GetString(1), arg.GetString(2))));
+            Add("clans", "Lists every clan", arg => arg.ReplyWith(TeamsAndClans.Clans()));
+            Add("clan", "toolcupboard.clan kick|role|uninvite|disband <clanId> [steamid] [roleId]", arg => arg.ReplyWith(TeamsAndClans.Clan(arg.GetString(0), arg.GetString(1), arg.GetString(2), arg.GetString(3))));
         }
 
         // For a player report: how far apart the two players are and whether they share a team

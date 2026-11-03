@@ -101,6 +101,13 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .note-body a { color: var(--color-focus); }
 #note-text { font-family: var(--font-mono); }
 @media (max-width: 720px) { #notes-view { grid-template-columns: minmax(0, 1fr); } }
+.groups { display: grid; gap: 24px; }
+.group { padding: 10px 0; border-bottom: 1px solid var(--color-rule); }
+.group-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 6px; }
+.group-head strong { font-family: var(--font-display); }
+.group-head .danger { margin-left: auto; }
+.group td:last-child { width: 1%; white-space: nowrap; }
+.group select { width: auto; }
 .report { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--color-rule); }
 .report-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
 .report-head strong { font-family: var(--font-display); }
@@ -280,6 +287,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
         <button role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view">Activity</button>
         <button role="tab" id="tab-reports" aria-selected="false" aria-controls="reports-view">Reports</button>
+        <button role="tab" id="tab-groups" aria-selected="false" aria-controls="groups-view">Teams</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-board" aria-selected="false" aria-controls="board-view">Leaderboard</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
@@ -330,6 +338,12 @@ dialog .actions { justify-content: flex-end; }
             <span class="form-status" id="file-editor-status"></span>
           </div>
         </div>
+      </div>
+      <div id="groups-view" class="panel groups" role="tabpanel" hidden>
+        <input id="groups-query" type="search" aria-label="Search teams and clans by name or member" placeholder="Search by team or clan name, or by a member" autocomplete="off">
+        <p class="form-status" id="groups-status"></p>
+        <div><h2>Teams</h2><div id="teams-list"></div><p class="note" id="teams-note"></p></div>
+        <div><h2>Clans</h2><div id="clans-list"></div><p class="note" id="clans-note"></p></div>
       </div>
       <div id="reports-view" class="panel" role="tabpanel" hidden>
         <div class="report-actions"><select id="reports-filter" aria-label="Show reports"><option value="active">Open and being looked at</option><option value="">All reports</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></select></div>
@@ -896,7 +910,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', groups: 'groups-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -910,6 +924,7 @@ function refreshView() {
   if (view === 'board') { refreshBoard(); }
   if (view === 'activity') { refreshActivity(); }
   if (view === 'reports') { refreshReports(); }
+  if (view === 'groups') { refreshGroups(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1218,6 +1233,100 @@ $('note-form').onsubmit = async event => {
 
 const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned', report: 'Reported' };
 const reportStatuses = { open: 'Open', looking: 'Being looked at', resolved: 'Resolved', dismissed: 'Dismissed' };
+
+let groupData = { teams: null, clans: null };
+
+async function refreshGroups() {
+  if (!selected) { return; }
+  const [teams, clans] = await Promise.all(['teams', 'clans'].map(list => api(`servers/${selected}/groups/${list}`).catch(() => null)));
+  groupData = { teams, clans };
+  showGroups();
+}
+
+function matchesGroup(name, members, query) {
+  return !query || (name || '').toLowerCase().includes(query) || members.some(m => (m.name || '').toLowerCase().includes(query) || m.steamId === query);
+}
+
+async function groupAction(kind, id, action, body, confirmText) {
+  if (confirmText && await confirmAction(action === 'disband' ? 'Disband' : 'Kick', confirmText, false) === null) { return; }
+  setText($('groups-status'), 'Working');
+  const error = await send(`servers/${selected}/groups/${kind}/${id}/${action}`, 'POST', body || {});
+  setText($('groups-status'), error || 'Done.');
+  refreshGroups();
+}
+
+function groupBox(title, detail, onDisband) {
+  const box = document.createElement('article');
+  box.className = 'group';
+  const head = document.createElement('div');
+  head.className = 'group-head';
+  const name = document.createElement('strong');
+  name.textContent = title;
+  const meta = document.createElement('span');
+  meta.className = 'report-meta';
+  meta.textContent = detail;
+  head.append(name, meta, actionButton('Disband', onDisband, 'danger'));
+  box.append(head);
+  return box;
+}
+
+function memberTable(rows) {
+  const table = document.createElement('table');
+  const body = table.createTBody();
+  for (const [member, extra, actions] of rows) {
+    const row = body.insertRow();
+    row.insertCell().textContent = member.name + (member.online ? ' (online)' : '');
+    row.cells[0].title = member.steamId;
+    row.insertCell().append(...[extra].flat().filter(Boolean));
+    const cell = row.insertCell();
+    const box = document.createElement('div');
+    box.className = 'row-actions';
+    box.append(...actions);
+    cell.append(box);
+  }
+  return table;
+}
+
+function showGroups() {
+  const query = $('groups-query').value.trim().toLowerCase();
+  const { teams, clans } = groupData;
+
+  const teamList = (teams || []).filter(t => matchesGroup(t.name, t.members, query));
+  $('teams-list').replaceChildren(...teamList.map(team => {
+    const label = team.name || `Team ${team.id}`;
+    const box = groupBox(label, `${team.members.length} member${team.members.length === 1 ? '' : 's'}`, () => groupAction('teams', team.id, 'disband', null, `Disband ${label}? Everyone in it becomes solo.`));
+    box.append(memberTable(team.members.map(m => [m, m.steamId === team.leader ? 'Leader' : '', m.steamId === team.leader ? [] : [
+      actionButton('Make leader', () => groupAction('teams', team.id, 'promote', { steamId: m.steamId })),
+      actionButton('Kick', () => groupAction('teams', team.id, 'kick', { steamId: m.steamId }, `Remove ${m.name} from ${label}?`), 'danger')
+    ]])));
+    return box;
+  }));
+  setText($('teams-note'), teams === null ? 'Start the server with the ToolCupboard mod to see teams.' : teamList.length ? '' : teams.length ? 'No teams match.' : 'No teams right now.');
+
+  const clanList = (clans?.clans || []).filter(c => matchesGroup(c.name, c.members, query));
+  $('clans-list').replaceChildren(...clanList.map(clan => {
+    const owner = clan.members.find(m => m.steamId === clan.owner);
+    const box = groupBox(clan.name, `${clan.members.length}/${clan.maxMembers} members · score ${clan.score}${owner ? ` · owner ${owner.name}` : ''}`, () => groupAction('clans', clan.id, 'disband', null, `Disband the clan ${clan.name}? This cannot be undone.`));
+    box.append(memberTable(clan.members.map(m => {
+      const role = document.createElement('select');
+      role.setAttribute('aria-label', `Role of ${m.name}`);
+      for (const r of clan.roles) { role.add(new Option(r.name, r.id, false, r.id === m.role)); }
+      role.onchange = () => groupAction('clans', clan.id, 'role', { steamId: m.steamId, roleId: role.value });
+      role.disabled = m.steamId === clan.owner;
+      return [m, role, m.steamId === clan.owner ? [] : [actionButton('Kick', () => groupAction('clans', clan.id, 'kick', { steamId: m.steamId }, `Remove ${m.name} from ${clan.name}?`), 'danger')]];
+    })));
+    if (clan.invites.length) {
+      const title = document.createElement('p');
+      title.className = 'report-meta';
+      title.textContent = 'Pending invites';
+      box.append(title, memberTable(clan.invites.map(i => [i, `invited by ${i.by}`, [actionButton('Withdraw', () => groupAction('clans', clan.id, 'uninvite', { steamId: i.steamId }))]])));
+    }
+    return box;
+  }));
+  setText($('clans-note'), clans === null ? 'Start the server with the ToolCupboard mod to see clans.' : clans.enabled === false ? 'Clans are turned off on this server.' : clanList.length ? '' : clans.clans.length ? 'No clans match.' : 'No clans yet.');
+}
+
+$('groups-query').oninput = showGroups;
 
 async function refreshReports() {
   if (!selected) { return; }

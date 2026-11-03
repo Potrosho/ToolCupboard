@@ -1169,6 +1169,66 @@ namespace ToolCupboard.Functions
             Log(server.ID, $"Reports: {report.Type} report from {report.ReporterName ?? report.ReporterId}" + (report.IsPlayerReport ? $" about {report.TargetName}" : string.Empty));
         }
 
+        // Runs a toolcupboard.* command and returns its JSON reply, asking again while the mod says it is still working.
+        // Null when RCON is down or the mod is not loaded.
+        async Task<Newtonsoft.Json.Linq.JToken> ModCommand(string serverId, string command)
+        {
+            RustRcon rcon = GetServerMetadata(serverId).Rcon;
+            for (int attempt = 0; rcon != null && rcon.IsConnected && attempt < 20; attempt++)
+            {
+                Newtonsoft.Json.Linq.JToken reply;
+                try { reply = Newtonsoft.Json.Linq.JToken.Parse(await rcon.SendAsync(command) ?? string.Empty); }
+                catch (Newtonsoft.Json.JsonException) { return null; }
+
+                if (!(reply is Newtonsoft.Json.Linq.JObject pending && pending.Value<bool?>("pending") == true)) { return reply; }
+                await Task.Delay(500);
+            }
+
+            return null;
+        }
+
+        static bool IsId(string text) => ulong.TryParse(text, out _);
+
+        public async Task<Newtonsoft.Json.Linq.JToken> GetWebTeams(string serverId, string list)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null || (list != "teams" && list != "clans") ? null : await ModCommand(server.ID, $"toolcupboard.{list}");
+        }
+
+        static readonly string[] TeamActions = { "promote", "kick", "disband" };
+        static readonly string[] ClanActions = { "role", "kick", "uninvite", "disband" };
+
+        // The mod command for a team or clan action, or null with the reason. Every value is checked before it goes into the command.
+        public static string GroupCommand(string kind, string groupId, string action, string steamId, string roleId, out string error)
+        {
+            bool team = kind == "teams";
+            error = !team && kind != "clans" ? "Unknown group."
+                : !(team ? TeamActions : ClanActions).Contains(action) || !IsId(groupId) ? "That action is not valid."
+                : action != "disband" && !IsId(steamId) ? "Choose a player."
+                : action == "role" && !int.TryParse(roleId, out _) ? "Choose a role."
+                : null;
+            if (error != null) { return null; }
+
+            return team ? $"toolcupboard.team {action} {groupId} {steamId}".TrimEnd() : $"toolcupboard.clan {action} {groupId} {steamId ?? "0"} {roleId ?? "0"}";
+        }
+
+        // Returns null when done, otherwise the reason it was refused
+        public async Task<string> RunWebGroupAction(string serverId, string kind, string groupId, string action, string steamId, string roleId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            string command = GroupCommand(kind, groupId, action, steamId, roleId, out string invalid);
+            if (command == null) { return invalid; }
+            bool team = kind == "teams";
+
+            Newtonsoft.Json.Linq.JToken reply = await ModCommand(server.ID, command);
+            if (reply == null) { return "The server did not answer. Is it running with the ToolCupboard mod loaded?"; }
+
+            string error = reply.Value<string>("error");
+            if (error == null) { Log(server.ID, $"{(team ? "Teams" : "Clans")}: {action} {(action == "disband" ? groupId : steamId)} from the web UI"); }
+            return error;
+        }
+
         public List<ServerReport> GetWebReports(string serverId)
         {
             ServerTable server = GetServerTableById(serverId);
