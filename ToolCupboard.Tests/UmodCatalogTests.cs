@@ -92,5 +92,26 @@ namespace ToolCupboard.Tests
             Assert.True(UmodCatalog.MatchesChecksum(content, checksum));
             Assert.False(UmodCatalog.MatchesChecksum(Encoding.UTF8.GetBytes("changed"), checksum));
         }
+
+        [Theory]
+        [InlineData("[Info(\"Kits\", \"k1lly0u\", \"4.4.2\")]", "4.4.2")]
+        [InlineData("[Info( \"Better Chat\" , \"LaserHydra\" , 5.2 )]", "5.2")]
+        [InlineData("class NoInfo {}", null)]
+        public void ReadsThePluginVersion(string source, string version)
+        {
+            Assert.Equal(version, RustMods.ReadVersion(source));
+        }
+
+        [Theory]
+        [InlineData("4.4.3", "4.4.2", true)]
+        [InlineData("4.10.0", "4.9.9", true)]
+        [InlineData("2", "1.9", true)]
+        [InlineData("4.4.2", "4.4.2", false)]
+        [InlineData("1.0.0", "1.0.1", false)]
+        [InlineData("1.0.0", null, false)]
+        public void UpdateOnlyWhenUmodIsNewer(string latest, string installed, bool newer)
+        {
+            Assert.Equal(newer, RustMods.IsNewer(latest, installed));
+        }
     }
 }

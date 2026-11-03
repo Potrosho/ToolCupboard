@@ -907,6 +907,44 @@ namespace ToolCupboard.Functions
             return framework == RustModFramework.None ? Array.Empty<RustPlugin>() : RustMods.GetPlugins(server.ID, framework).ToArray();
         }
 
+        RustPlugin FindWebPlugin(ServerTable server, string name, out RustModFramework framework)
+        {
+            framework = RustMods.Detect(server.ID);
+            RustModFramework detected = framework;
+            return detected == RustModFramework.None ? null : RustMods.GetPlugins(server.ID, detected).FirstOrDefault(p => p.Name == name);
+        }
+
+        // Null when the plugin is unknown. Empty when it has no config yet.
+        public string GetWebPluginConfig(string serverId, string name)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return null; }
+            RustPlugin plugin = FindWebPlugin(server, name, out RustModFramework framework);
+            if (plugin == null) { return null; }
+
+            string path = RustMods.GetConfigPath(server.ID, framework, plugin.Name);
+            return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+        }
+
+        // Returns null when saved, otherwise the reason it was refused
+        public string SaveWebPluginConfig(string serverId, string name, string text)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+            RustPlugin plugin = FindWebPlugin(server, name, out RustModFramework framework);
+            if (plugin == null) { return "That plugin does not exist."; }
+            if (text == null || text.Length > 5 * 1024 * 1024) { return "The config is too large."; }
+
+            try { Newtonsoft.Json.Linq.JToken.Parse(text); }
+            catch (Newtonsoft.Json.JsonException e) { return $"The config is not valid JSON: {e.Message}"; }
+
+            string path = RustMods.GetConfigPath(server.ID, framework, plugin.Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            RustConfig.ReplaceFile(path, text);
+            Log(server.ID, $"Mods: {plugin.Name} config edited from the web UI");
+            return null;
+        }
+
         public async Task<string> InstallWebPlugin(string serverId, string slug)
         {
             ServerTable server = GetServerTableById(serverId);

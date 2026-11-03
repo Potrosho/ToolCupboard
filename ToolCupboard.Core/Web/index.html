@@ -298,6 +298,8 @@ dialog .actions { justify-content: flex-end; }
         </div>
         <div class="form-actions" id="framework-manage" hidden>
           <button id="plugin-upload" type="button">Add plugin file</button>
+          <button id="plugin-updates" type="button">Check for updates</button>
+          <span class="form-status" id="plugin-updates-status"></span>
           <input id="plugin-file" type="file" accept=".cs" aria-label="Plugin file" hidden>
           <button id="remove-framework" type="button" class="danger">Remove framework</button>
         </div>
@@ -308,6 +310,16 @@ dialog .actions { justify-content: flex-end; }
             <tbody></tbody>
           </table>
           <p class="note" id="installed-note">No plugins installed</p>
+        </div>
+        <div id="plugin-config" hidden>
+          <h2 id="plugin-config-title"></h2>
+          <label class="field"><span>JSON. Save, then reload the plugin for changes to apply.</span><textarea id="plugin-config-text" rows="16" spellcheck="false" aria-label="Plugin config"></textarea></label>
+          <div class="form-actions">
+            <button id="plugin-config-save" type="button">Save</button>
+            <button id="plugin-config-reload" type="button">Save and reload</button>
+            <button id="plugin-config-close" type="button">Close</button>
+            <span class="form-status" id="plugin-config-status"></span>
+          </div>
         </div>
         <div>
           <h2>Find plugins on uMod</h2>
@@ -1160,7 +1172,51 @@ function actionButton(label, onclick, className) {
   return button;
 }
 
-let installedNames = new Set(), resultButtons = [];
+let installedNames = new Set(), resultButtons = [], pluginUpdates = new Map(), editingPlugin = null;
+
+async function editConfig(plugin) {
+  const config = await api(`servers/${selected}/plugins/${encodeURIComponent(plugin.name)}/config`).catch(() => null);
+  if (!config) { return; }
+  editingPlugin = plugin;
+  setText($('plugin-config-title'), `${plugin.name} config`);
+  $('plugin-config-text').value = config.text;
+  setText($('plugin-config-status'), config.text ? '' : 'No config yet. The plugin creates one the first time it loads.');
+  $('plugin-config').hidden = false;
+  $('plugin-config-text').focus();
+}
+
+async function saveConfig(reload) {
+  if (!editingPlugin) { return; }
+  const name = encodeURIComponent(editingPlugin.name);
+  const error = await send(`servers/${selected}/plugins/${name}/config`, 'PUT', { text: $('plugin-config-text').value });
+  if (error) { setText($('plugin-config-status'), error); return; }
+  const reloaded = reload && await api(`servers/${selected}/plugins/${name}/reload`, { method: 'POST' }).then(() => true).catch(() => false);
+  setText($('plugin-config-status'), reload ? (reloaded ? 'Saved and reloaded.' : 'Saved. Reload needs the server running.') : 'Saved.');
+}
+
+$('plugin-config-save').onclick = () => saveConfig(false);
+$('plugin-config-reload').onclick = () => saveConfig(true);
+$('plugin-config-close').onclick = () => { $('plugin-config').hidden = true; editingPlugin = null; };
+
+$('plugin-updates').onclick = async () => {
+  $('plugin-updates').disabled = true;
+  setText($('plugin-updates-status'), 'Checking uMod');
+  const updates = await api(`servers/${selected}/plugins/updates`).catch(() => null);
+  $('plugin-updates').disabled = false;
+  if (!updates) { setText($('plugin-updates-status'), 'Could not reach uMod.'); return; }
+  pluginUpdates = new Map(updates.map(update => [update.name, update]));
+  const count = updates.filter(update => update.update).length;
+  setText($('plugin-updates-status'), count ? `${count} update${count === 1 ? '' : 's'} available` : 'All plugins are up to date');
+  refreshInstalled();
+};
+
+async function updatePlugin(update) {
+  setText($('plugin-updates-status'), `Updating ${update.name}`);
+  const error = await send(`servers/${selected}/plugins/install`, 'POST', { text: update.slug });
+  if (!error) { pluginUpdates.set(update.name, { ...update, installed: update.latest, update: false }); }
+  setText($('plugin-updates-status'), error || `${update.name} updated to ${update.latest}. Reload it to apply.`);
+  refreshInstalled();
+}
 
 function syncInstallButtons() {
   for (const { plugin, button } of resultButtons) {
@@ -1188,10 +1244,13 @@ async function refreshInstalled() {
     title.textContent = plugin.name;
     const detail = document.createElement('span');
     detail.className = 'plugin-detail';
-    detail.textContent = plugin.status;
+    const update = pluginUpdates.get(plugin.name);
+    detail.textContent = [plugin.status, plugin.version && `version ${plugin.version}`, update?.update && `update to ${update.latest} available`, update && !update.slug && 'not on uMod'].filter(Boolean).join(', ');
     info.append(title, detail);
     const actions = document.createElement('div');
     actions.className = 'row-actions';
+    if (update?.update) { actions.append(actionButton('Update', () => updatePlugin(update))); }
+    actions.append(actionButton('Config', () => editConfig(plugin)));
     actions.append(actionButton(plugin.enabled ? 'Disable' : 'Enable', () => pluginAction(plugin, plugin.enabled ? 'disable' : 'enable')));
     if (plugin.enabled && server?.status === 'Started') { actions.append(actionButton('Reload', () => pluginAction(plugin, 'reload'))); }
     actions.append(actionButton('Delete', async () => {

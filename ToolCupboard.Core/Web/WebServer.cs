@@ -203,6 +203,29 @@ namespace ToolCupboard.Web
                 return plugins == null ? Results.NotFound() : Results.Json(plugins);
             });
 
+            api.MapGet("/api/servers/{id}/plugins/updates", async (string id) =>
+            {
+                RustPlugin[] plugins = await _servers.Run(() => _servers.GetWebPlugins(id));
+                if (plugins == null) { return Results.NotFound(); }
+
+                // One at a time, so a server with many plugins does not flood uMod
+                var updates = new System.Collections.Generic.List<object>();
+                foreach (RustPlugin plugin in plugins)
+                {
+                    UmodPlugin latest;
+                    try { latest = await UmodCatalog.FindByName(plugin.Name); }
+                    catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException || e is Newtonsoft.Json.JsonException) { return Results.StatusCode(StatusCodes.Status502BadGateway); }
+
+                    updates.Add(new { plugin.Name, Installed = plugin.Version, Latest = latest?.Version, latest?.Slug, Update = latest != null && RustMods.IsNewer(latest.Version, plugin.Version) });
+                }
+
+                return Results.Json(updates);
+            });
+
+            api.MapGet("/api/servers/{id}/plugins/{name}/config", async (string id, string name) => await _servers.Run(() => _servers.GetWebPluginConfig(id, name)) is string text ? Results.Json(new { text }) : Results.NotFound());
+
+            api.MapPut("/api/servers/{id}/plugins/{name}/config", async (string id, string name, WebCommand body) => Refused(await _servers.Run(() => _servers.SaveWebPluginConfig(id, name, body?.Text))));
+
             api.MapPost("/api/servers/{id}/plugins/install", async (string id, WebCommand body) =>
             {
                 string error = await _servers.Run(() => _servers.InstallWebPlugin(id, body?.Text));

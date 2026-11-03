@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace ToolCupboard.Functions
@@ -21,6 +22,7 @@ namespace ToolCupboard.Functions
         public string Path { get; set; }
         public bool Enabled { get; set; }
         public bool HasConfig { get; set; }
+        public string Version { get; set; }
         public DateTime Modified { get; set; }
 
         public string Status => Enabled ? "Enabled" : "Disabled";
@@ -155,6 +157,7 @@ namespace ToolCupboard.Functions
                     Path = file,
                     Enabled = enabled,
                     HasConfig = File.Exists(GetConfigPath(serverId, framework, Path.GetFileNameWithoutExtension(file))),
+                    Version = ReadVersion(File.ReadAllText(file)),
                     Modified = File.GetLastWriteTime(file)
                 }));
             }
@@ -162,6 +165,20 @@ namespace ToolCupboard.Functions
             AddFrom(pluginsPath, true);
             AddFrom(Path.Combine(pluginsPath, DISABLED_FOLDER), false);
             return plugins.OrderBy(plugin => plugin.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        // From [Info("Title", "Author", "1.2.3")] in the plugin source
+        public static string ReadVersion(string source)
+        {
+            Match match = Regex.Match(source, @"\[Info\(\s*""[^""]*""\s*,\s*""[^""]*""\s*,\s*""?([0-9][0-9.]*)");
+            return match.Success ? match.Groups[1].Value.TrimEnd('.') : null;
+        }
+
+        // True when the uMod version is newer. Versions that do not parse never count as an update.
+        public static bool IsNewer(string latest, string installed)
+        {
+            static string Pad(string v) => v != null && !v.Contains('.') ? v + ".0" : v;
+            return System.Version.TryParse(Pad(latest), out Version a) && System.Version.TryParse(Pad(installed), out Version b) && a > b;
         }
 
         public static void AddPlugin(string serverId, RustModFramework framework, string sourcePath)

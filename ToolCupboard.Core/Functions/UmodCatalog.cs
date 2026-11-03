@@ -82,6 +82,13 @@ namespace ToolCupboard.Functions
             return ParsePage(await _httpClient.GetStringAsync(url));
         }
 
+        // The uMod plugin with exactly this class name, or null
+        public static async Task<UmodPlugin> FindByName(string name)
+        {
+            UmodPage page = await Search(name, 1);
+            return page.Items.FirstOrDefault(plugin => plugin.Name == name);
+        }
+
         public static bool IsValidSlug(string slug) => slug != null && Regex.IsMatch(slug, @"\A[a-z0-9]+(-[a-z0-9]+)*\z");
 
         // The name becomes a file name in the plugins folder
