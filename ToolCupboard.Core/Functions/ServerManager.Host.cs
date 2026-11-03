@@ -1095,6 +1095,12 @@ namespace ToolCupboard.Functions
             };
         }
 
+        public List<ActivityEntry> GetWebActivity(string serverId, string query, string type, int days)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : ActivityLog.Search(server.ID, query, type, Math.Clamp(days, 1, 3650));
+        }
+
         public List<LeaderboardRow> GetWebLeaderboard(string serverId, DateTime? from, DateTime? to)
         {
             ServerTable server = GetServerTableById(serverId);

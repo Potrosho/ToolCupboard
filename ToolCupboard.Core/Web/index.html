@@ -269,6 +269,7 @@ dialog .actions { justify-content: flex-end; }
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-console" aria-selected="true" aria-controls="console-view">Console</button>
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
+        <button role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view">Activity</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-board" aria-selected="false" aria-controls="board-view">Leaderboard</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
@@ -319,6 +320,18 @@ dialog .actions { justify-content: flex-end; }
             <span class="form-status" id="file-editor-status"></span>
           </div>
         </div>
+      </div>
+      <div id="activity-view" class="panel" role="tabpanel" hidden>
+        <form class="chat-search" id="activity-search">
+          <input id="activity-query" type="search" aria-label="Search names, Steam IDs, or details" placeholder="Search names, Steam IDs, or details" autocomplete="off">
+          <select id="activity-type" aria-label="Event"><option value="">All events</option><option value="join">Joins</option><option value="leave">Leaves</option><option value="death">Deaths</option><option value="chat">Chat</option><option value="kick">Kicks</option><option value="ban">Bans</option></select>
+          <select id="activity-days" aria-label="Time range"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="3650">All time</option></select>
+        </form>
+        <table class="chat-log" id="activity-log" hidden>
+          <thead><tr><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Player</th><th scope="col">Details</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note" id="activity-note">No activity yet. The ToolCupboard mod records joins, leaves, kicks, bans and deaths while the server runs.</p>
       </div>
       <div id="board-view" class="panel" role="tabpanel" hidden>
         <form class="board-range" id="board-range">
@@ -867,7 +880,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -879,6 +892,7 @@ function refreshView() {
   if (view === 'chat') { refreshChat(); }
   if (view === 'files') { refreshFiles(); }
   if (view === 'board') { refreshBoard(); }
+  if (view === 'activity') { refreshActivity(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1184,6 +1198,44 @@ $('note-form').onsubmit = async event => {
   if (renamed) { await fetch(noteUrl(noteName), { method: 'DELETE', headers: { 'X-ToolCupboard-Token': token || '' } }).catch(() => null); }
   openNote(name);
 };
+
+const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned' };
+
+function playerButton(name, steamId, onPick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = name || steamId || 'Server';
+  button.title = steamId ? `Show only ${name || steamId} (${steamId})` : '';
+  button.onclick = () => onPick(steamId || name);
+  return button;
+}
+
+async function refreshActivity() {
+  if (!selected) { return; }
+  const params = new URLSearchParams({ q: $('activity-query').value, type: $('activity-type').value, days: $('activity-days').value });
+  const entries = await api(`servers/${selected}/activity?${params}`).catch(() => null) || [];
+  const pick = id => { $('activity-query').value = id; refreshActivity(); };
+  const body = $('activity-log').tBodies[0];
+  body.replaceChildren();
+  for (const entry of entries) {
+    const row = body.insertRow();
+    row.insertCell().textContent = new Date(entry.time).toLocaleString();
+    row.insertCell().textContent = activityLabels[entry.type] || entry.type;
+    row.insertCell().append(playerButton(entry.name, entry.steamId, pick));
+    const detail = row.insertCell();
+    detail.textContent = entry.detail || '';
+    if (entry.otherId) { detail.append(' '); detail.append(playerButton(`Show ${entry.otherName || entry.otherId}`, entry.otherId, pick)); }
+  }
+  $('activity-log').hidden = !entries.length;
+  setText($('activity-note'), entries.length >= 300 ? 'Showing the newest 300 matches. Search to narrow it down.' : entries.length ? '' : 'No matching activity.');
+  $('activity-note').hidden = entries.length > 0 && entries.length < 300;
+}
+
+let activityTimer;
+$('activity-search').onsubmit = event => { event.preventDefault(); refreshActivity(); };
+$('activity-query').oninput = () => { clearTimeout(activityTimer); activityTimer = setTimeout(refreshActivity, 300); };
+$('activity-type').onchange = refreshActivity;
+$('activity-days').onchange = refreshActivity;
 
 let boardRows = [], boardSort = 'kills';
 const isoDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;

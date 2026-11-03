@@ -1,4 +1,3 @@
-using HarmonyLib;
 using UnityEngine;
 
 namespace ToolCupboard.Mod
@@ -6,15 +5,16 @@ namespace ToolCupboard.Mod
     /// <summary>
     /// Reports each player death with who killed them, for the leaderboard and the activity feed.
     /// </summary>
-    [HarmonyPatch(typeof(BasePlayer), nameof(BasePlayer.OnDied))]
     static class DeathEvents
     {
-        static void Prefix(BasePlayer __instance, HitInfo info)
+        // BasePlayer.OnDied(HitInfo info)
+        public static void OnDied(BasePlayer __instance, object[] __args)
         {
             try
             {
                 BasePlayer victim = __instance;
                 if (victim == null || victim.IsNpc) { return; }
+                HitInfo info = __args.Length > 0 ? __args[0] as HitInfo : null;
 
                 // A player who bleeds out after being downed has no attacker on the last hit
                 BasePlayer killer = info?.InitiatorPlayer ?? victim.lastAttacker as BasePlayer;

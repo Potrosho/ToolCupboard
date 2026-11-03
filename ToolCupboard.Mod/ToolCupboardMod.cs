@@ -12,16 +12,18 @@ namespace ToolCupboard.Mod
     public class ToolCupboardMod : IHarmonyModHooks
     {
         // ToolCupboard compares this with the copy it ships, and replaces an older mod
-        public const string Version = "2";
+        public const string Version = "3";
 
         public void OnLoaded(OnHarmonyModLoadedArgs args)
         {
             ModCommands.Register();
+            Hooks.Apply();
             Events.Add("loaded", new { version = Version });
         }
 
         public void OnUnloaded(OnHarmonyModUnloadedArgs args)
         {
+            Hooks.Remove();
             ModCommands.Unregister();
         }
     }
@@ -86,14 +88,10 @@ namespace ToolCupboard.Mod
         }
 
         // Rust rebuilds its command index while starting, which can drop commands added before that
-        [HarmonyPatch(typeof(ConsoleSystem.Index), nameof(ConsoleSystem.Index.Initialize))]
-        static class KeepCommandsAfterInitialize
+        public static void KeepAfterInitialize()
         {
-            static void Postfix()
-            {
-                Unregister();
-                Register();
-            }
+            Unregister();
+            Register();
         }
     }
 }

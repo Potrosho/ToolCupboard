@@ -129,11 +129,15 @@ namespace ToolCupboard.Functions
 
             ModEventReceived += (serverId, type, data) =>
             {
-                if (type != "death") { return; }
+                try
+                {
+                    ActivityEntry entry = ActivityEntry.FromMod(type, data, DateTime.Now);
+                    if (entry != null) { ActivityLog.Append(serverId, entry); }
 
-                PlayerDeath death = PlayerDeath.FromMod(data, DateTime.Now);
-                try { if (death != null) { Leaderboard.Append(serverId, death); } }
-                catch (IOException e) { Debug.WriteLine($"Could not save a death: {e.Message}"); }
+                    PlayerDeath death = type == "death" ? PlayerDeath.FromMod(data, DateTime.Now) : null;
+                    if (death != null) { Leaderboard.Append(serverId, death); }
+                }
+                catch (IOException e) { Debug.WriteLine($"Could not save a {type} event: {e.Message}"); }
             };
 
             for (int i = 0; i <= AppInfo.MaxServers; i++)
