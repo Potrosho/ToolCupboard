@@ -319,6 +319,8 @@ dialog .actions { justify-content: flex-end; }
             <label class="field wide"><span>Header image URL</span><input id="set-headerImage" autocomplete="off"></label>
           </div>
           <label class="check"><input id="set-rustPlus" type="checkbox">Enable Rust+</label>
+          <label class="check"><input id="set-openRouterPorts" type="checkbox">Open the game and query ports on my router (UPnP), so players outside my network can join</label>
+          <p class="form-status" id="set-router-status"></p>
         </div>
         <div>
           <h2>Discord alerts</h2>
@@ -742,7 +744,7 @@ async function refreshBackups() {
   }
 }
 
-const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'rustPlus', 'name', 'ip', 'port', 'queryPort', 'map', 'maxPlayers', 'parameters', 'cpuPriority', 'discordAlert', 'discordMessage', 'autoStartAlert', 'autoRestartAlert', 'autoUpdateAlert', 'restartCrontabAlert', 'crashAlert'];
+const settingFields = ['autoStart', 'autoRestart', 'autoUpdate', 'updateOnStart', 'backupOnStart', 'restartSchedule', 'restartCrontab', 'wipeSchedule', 'wipeCrontab', 'wipeType', 'wipeNewSeed', 'maximumBackups', 'worldSize', 'seed', 'tickRate', 'saveInterval', 'description', 'url', 'headerImage', 'rustPlus', 'name', 'ip', 'port', 'queryPort', 'map', 'maxPlayers', 'parameters', 'cpuPriority', 'discordAlert', 'discordMessage', 'autoStartAlert', 'autoRestartAlert', 'autoUpdateAlert', 'restartCrontabAlert', 'crashAlert', 'openRouterPorts'];
 
 async function refreshSettings() {
   if (!selected) { return; }
@@ -753,6 +755,7 @@ async function refreshSettings() {
     if (field.type === 'checkbox') { field.checked = settings[name]; } else { field.value = settings[name] ?? ''; }
   }
   setText($('set-next-wipe'), settings.nextWipe ? `Next match: ${settings.nextWipe}` : '');
+  setText($('set-router-status'), settings.routerStatus || '');
 
   $('set-newWebhook').value = '';
   $('set-clearWebhook').checked = false;

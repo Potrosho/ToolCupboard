@@ -44,6 +44,7 @@ namespace ToolCupboard.Functions
             public const string WipeType = "wipetype";
             public const string WipeNewSeed = "wipenewseed";
             public const string WipeLast = "wipelast";
+            public const string OpenRouterPorts = "openrouterports";
         }
 
         public string ServerID;
@@ -80,6 +81,7 @@ namespace ToolCupboard.Functions
         public RustWipeType WipeType = RustWipeType.Map;
         public bool WipeNewSeed = true;
         public DateTime WipeLast = DateTime.Now;
+        public bool OpenRouterPorts;
 
         public ServerConfig(string serverid)
         {
@@ -156,6 +158,7 @@ namespace ToolCupboard.Functions
                             case SettingName.WipeType: Enum.TryParse(keyvalue[1], out WipeType); break;
                             case SettingName.WipeNewSeed: WipeNewSeed = keyvalue[1] == "1"; break;
                             case SettingName.WipeLast: DateTime.TryParse(keyvalue[1], out WipeLast); break;
+                            case SettingName.OpenRouterPorts: OpenRouterPorts = keyvalue[1] == "1"; break;
                         }
                     }
                 }

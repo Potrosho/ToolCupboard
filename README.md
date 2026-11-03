@@ -27,6 +27,7 @@ Only run one edition at a time, because both use port 27080 for the dashboard. *
 ## Features
   * **Install or import** - Install a server through SteamCMD, or import an existing one.
   * **Multiple servers** - Each server gets its own files and its own game, RCON, and query ports.
+  * **Router ports** - Turn on **Open the game and query ports on my router** (**Router Ports** in the Desktop app) and ToolCupboard opens them through UPnP while the server runs, so friends outside your network can join. It never opens RCON or the dashboard. If your router has UPnP off, or your internet provider shares your IP (CGNAT), it tells you why in the log.
   * **Automation** - Auto start, auto restart after crashes, auto update, and scheduled restarts and wipes, with warnings in game chat.
   * **Wipes** - Run a map, blueprint, or full wipe by hand or on a schedule. Wiped files are kept, and bans are never touched.
   * **RCON** - Live console and chat, safe save and shutdown.

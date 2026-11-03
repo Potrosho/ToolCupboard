@@ -352,6 +352,21 @@ namespace ToolCupboard.Functions
 
             _serverMetadata[i].EmbedConsole = serverConfig.EmbedConsole;
             _serverMetadata[i].AutoScroll = serverConfig.AutoScroll;
+            _serverMetadata[i].OpenRouterPorts = serverConfig.OpenRouterPorts;
+        }
+
+        // Opens or closes the ports right away when the server is running, otherwise on its next start or stop
+        public void SetOpenRouterPorts(ServerTable server, bool open)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            if (metadata.OpenRouterPorts == open) { return; }
+
+            metadata.OpenRouterPorts = open;
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.OpenRouterPorts, open ? "1" : "0");
+            if (metadata.ServerStatus == ServerStatus.Started)
+            {
+                _ = open ? OpenRouterPorts(server) : CloseRouterPorts(server);
+            }
         }
 
         public async void AutoStartServer()
@@ -688,7 +703,9 @@ namespace ToolCupboard.Functions
                 AutoRestartAlert = metadata.AutoRestartAlert,
                 AutoUpdateAlert = metadata.AutoUpdateAlert,
                 RestartCrontabAlert = metadata.RestartCrontabAlert,
-                CrashAlert = metadata.CrashAlert
+                CrashAlert = metadata.CrashAlert,
+                OpenRouterPorts = metadata.OpenRouterPorts,
+                RouterStatus = metadata.RouterStatus
             };
         }
 
@@ -764,6 +781,7 @@ namespace ToolCupboard.Functions
             metadata.AutoUpdateAlert = settings.AutoUpdateAlert; SaveFlag(ServerConfig.SettingName.AutoUpdateAlert, settings.AutoUpdateAlert);
             metadata.RestartCrontabAlert = settings.RestartCrontabAlert; SaveFlag(ServerConfig.SettingName.RestartCrontabAlert, settings.RestartCrontabAlert);
             metadata.CrashAlert = settings.CrashAlert; SaveFlag(ServerConfig.SettingName.CrashAlert, settings.CrashAlert);
+            SetOpenRouterPorts(server, settings.OpenRouterPorts);
 
             if (settings.ClearWebhook || !string.IsNullOrEmpty(newWebhook))
             {

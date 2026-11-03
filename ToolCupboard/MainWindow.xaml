@@ -694,8 +694,11 @@
                         <Label Content="Auto Start" HorizontalAlignment="Left" VerticalAlignment="Top" Height="26" Margin="5,127,0,0"/>
                         <mah:ToggleSwitch OnContent="" OffContent="" x:Name="switch_autostart" Margin="100,125,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_AutoStart_Click" Width="44" Height="30"/>
 
-                        <Label x:Name="label_embedconsole" Content="Embed Console" HorizontalAlignment="Left" Margin="5,99,0,0" VerticalAlignment="Top"/>
-                        <mah:ToggleSwitch OnContent="" OffContent="" x:Name="switch_embedconsole" Margin="100,97,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_EmbedConsole_Click" Width="44" Height="30"/>
+                        <!-- Rust servers never embed their console, so its slot holds the router ports switch -->
+                        <Label x:Name="label_embedconsole" Content="Embed Console" HorizontalAlignment="Left" Margin="5,99,0,0" VerticalAlignment="Top" Visibility="Collapsed"/>
+                        <mah:ToggleSwitch OnContent="" OffContent="" x:Name="switch_embedconsole" Margin="100,97,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_EmbedConsole_Click" Width="44" Height="30" Visibility="Collapsed"/>
+                        <Label Content="Router Ports" HorizontalAlignment="Left" Margin="5,99,0,0" VerticalAlignment="Top" ToolTip="Open the game and query ports on your router (UPnP), so players outside your network can join"/>
+                        <mah:ToggleSwitch OnContent="" OffContent="" x:Name="switch_routerports" Margin="100,97,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Switch_RouterPorts_Toggled" Width="44" Height="30" ToolTip="Open the game and query ports on your router (UPnP), so players outside your network can join"/>
 
                         <Label Content="Auto Restart" HorizontalAlignment="Left" Margin="177,127,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch OnContent="" OffContent="" x:Name="switch_autorestart" Margin="258,125,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_AutoRestart_Click" Width="44" Height="30"/>

@@ -526,6 +526,7 @@ namespace ToolCupboard
                 switch_autoupdate.IsOn = GetServerMetadata(row.ID).AutoUpdate;
                 switch_updateonstart.IsOn = GetServerMetadata(row.ID).UpdateOnStart;
                 switch_backuponstart.IsOn = GetServerMetadata(row.ID).BackupOnStart;
+                switch_routerports.IsOn = GetServerMetadata(row.ID).OpenRouterPorts;
                 switch_discordalert.IsOn = GetServerMetadata(row.ID).DiscordAlert;
                 button_discordtest.IsEnabled = switch_discordalert.IsOn;
 
@@ -1854,6 +1855,13 @@ public void Log(string serverId, string logText) => g_Servers.Log(serverId, logT
             var server = (ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
             ToggleMahappFlyout(MahAppFlyout_DiscordAlert);
+        }
+
+        private void Switch_RouterPorts_Toggled(object sender, RoutedEventArgs e)
+        {
+            var server = (ServerTable)ServerGrid.SelectedItem;
+            if (server == null) { return; }
+            g_Servers.SetOpenRouterPorts(server, switch_routerports.IsOn);
         }
 
         private void Button_UpdateOnStart_Click(object sender, RoutedEventArgs e)

@@ -53,6 +53,9 @@ namespace ToolCupboard.Functions
 
         public bool EmbedConsole;
         public bool AutoScroll;
+
+        public bool OpenRouterPorts;
+        public string RouterStatus;
     }
 
     public enum ServerStatus
@@ -222,6 +225,7 @@ namespace ToolCupboard.Functions
             bool stopGracefully = await Server_BeginStop(server, p);
 
             Log(server.ID, "Server: Stopped");
+            CloseRouterPortsIfOn(server);
             if (!stopGracefully)
             {
                 Log(server.ID, "[NOTICE] Server fail to stop gracefully");
@@ -458,6 +462,7 @@ namespace ToolCupboard.Functions
             //Remove firewall rule
             var firewall = new WindowsFirewall(null, ServerPath.GetServers(server.ID));
             firewall.RemoveRuleEx();
+            CloseRouterPortsIfOn(server);
 
             //End All Running Process
             await EndAllRunningProcess(server.ID);
@@ -528,7 +533,11 @@ namespace ToolCupboard.Functions
 
                     _serverMetadata[int.Parse(server.ID)].Process = null;
 
-                    if (autoRestart)
+                    if (!autoRestart)
+                    {
+                        CloseRouterPortsIfOn(server);
+                    }
+                    else
                     {
                         if (GetServerMetadata(server.ID).BackupOnStart)
                         {
@@ -565,6 +574,48 @@ namespace ToolCupboard.Functions
                     }
                 }
             }, null);
+        }
+
+        static int[] GetRouterPorts(ServerTable server) =>
+            new[] { server.Port, server.QueryPort }.Where(IsValidPort).Select(int.Parse).Distinct().ToArray();
+
+        public async Task OpenRouterPorts(ServerTable server)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            int[] ports = GetRouterPorts(server);
+            try
+            {
+                string publicIp = await RouterPorts.Open(ports, $"ToolCupboard server {server.ID}");
+                metadata.RouterStatus = $"Ports {string.Join(", ", ports)} UDP are open. Players join with {publicIp}:{server.Port}";
+            }
+            catch (Exception e)
+            {
+                metadata.RouterStatus = "Could not open ports. " + e.Message;
+            }
+
+            Log(server.ID, "Router: " + metadata.RouterStatus);
+        }
+
+        public async Task CloseRouterPorts(ServerTable server)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            int[] ports = GetRouterPorts(server);
+            try
+            {
+                await RouterPorts.Close(ports);
+                metadata.RouterStatus = $"Ports {string.Join(", ", ports)} UDP are closed.";
+            }
+            catch (Exception e)
+            {
+                metadata.RouterStatus = "Could not close ports. " + e.Message;
+            }
+
+            Log(server.ID, "Router: " + metadata.RouterStatus);
+        }
+
+        void CloseRouterPortsIfOn(ServerTable server)
+        {
+            if (GetServerMetadata(server.ID).OpenRouterPorts) { _ = CloseRouterPorts(server); }
         }
 
         public async void StartAutoUpdateCheck(ServerTable server)
@@ -1170,6 +1221,11 @@ namespace ToolCupboard.Functions
             StartQuery(server);
 
             StartRcon(server, p);
+
+            if (GetServerMetadata(server.ID).OpenRouterPorts)
+            {
+                _ = OpenRouterPorts(server);
+            }
 
             return gameServer;
         }
