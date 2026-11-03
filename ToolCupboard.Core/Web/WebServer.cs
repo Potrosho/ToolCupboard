@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using ToolCupboard.Functions;
@@ -95,8 +96,90 @@ namespace ToolCupboard.Web
 
         private static IResult Refused(string error) => error == null ? Results.Ok() : Results.Json(new { error }, statusCode: StatusCodes.Status409Conflict);
 
+        // The server's root folder and the full path, which is null for an unknown server or a path outside its folder
+        private async Task<(string Root, string Full)> ServerFile(string id, string path)
+        {
+            ServerTable server = await _servers.Run(() => _servers.GetServerTableById(id));
+            if (server == null) { return (null, null); }
+
+            string root = ServerPath.GetServersServerFiles(server.ID);
+            return (root, ServerFiles.Resolve(root, path));
+        }
+
+        private static bool IsFileError(Exception e) => e is IOException || e is UnauthorizedAccessException || e is BadHttpRequestException;
+
+        private void MapFiles(IEndpointRouteBuilder api)
+        {
+            api.MapGet("/api/servers/{id}/files", async (string id, string path) =>
+            {
+                var (_, full) = await ServerFile(id, path);
+                if (full == null || !Directory.Exists(full)) { return Results.NotFound(); }
+
+                try { return Results.Json(ServerFiles.List(full)); }
+                catch (Exception e) when (IsFileError(e)) { return Refused(e.Message); }
+            });
+
+            api.MapGet("/api/servers/{id}/files/content", async (string id, string path) =>
+            {
+                var (_, full) = await ServerFile(id, path);
+                return full != null && File.Exists(full) ? Results.File(full, "application/octet-stream", Path.GetFileName(full)) : Results.NotFound();
+            });
+
+            // Saves an edited file or an upload. The body is the raw file.
+            api.MapPut("/api/servers/{id}/files/content", async (string id, string path, HttpContext context) =>
+            {
+                var (root, full) = await ServerFile(id, path);
+                if (full == null || ServerFiles.IsRoot(root, full) || Directory.Exists(full) || !Directory.Exists(Path.GetDirectoryName(full))) { return Results.NotFound(); }
+
+                // Maps and saves can be large
+                IHttpMaxRequestBodySizeFeature limit = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+                if (limit != null && !limit.IsReadOnly) { limit.MaxRequestBodySize = 4L * 1024 * 1024 * 1024; }
+
+                // Written beside it first, so a cancelled upload never leaves half a file
+                string temp = full + ".tcupload";
+                try
+                {
+                    using (FileStream file = File.Create(temp)) { await context.Request.Body.CopyToAsync(file); }
+                    File.Move(temp, full, true);
+                    return Results.Ok();
+                }
+                catch (Exception e) when (IsFileError(e))
+                {
+                    try { File.Delete(temp); } catch (Exception) { }
+                    return Refused(e.Message);
+                }
+            });
+
+            api.MapPost("/api/servers/{id}/files/folder", async (string id, string path) =>
+            {
+                var (root, full) = await ServerFile(id, path);
+                if (full == null || ServerFiles.IsRoot(root, full)) { return Results.NotFound(); }
+                if (File.Exists(full) || Directory.Exists(full)) { return Refused("Something with that name already exists."); }
+
+                try { Directory.CreateDirectory(full); return Results.Ok(); }
+                catch (Exception e) when (IsFileError(e)) { return Refused(e.Message); }
+            });
+
+            api.MapDelete("/api/servers/{id}/files", async (string id, string path) =>
+            {
+                var (root, full) = await ServerFile(id, path);
+                if (full == null || ServerFiles.IsRoot(root, full)) { return Results.NotFound(); }
+
+                try
+                {
+                    if (Directory.Exists(full)) { Directory.Delete(full, true); }
+                    else if (File.Exists(full)) { File.Delete(full); }
+                    else { return Results.NotFound(); }
+                    return Results.Ok();
+                }
+                catch (Exception e) when (IsFileError(e)) { return Refused(e.Message); }
+            });
+        }
+
         private void MapApi(IEndpointRouteBuilder api)
         {
+            MapFiles(api);
+
             api.MapGet("/api/servers", async () => Results.Json(await _servers.Run(_servers.GetWebServers)));
 
             api.MapPost("/api/servers/{id}/{action}", async (string id, string action) =>

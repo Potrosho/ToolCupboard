@@ -79,6 +79,13 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .chat-log td:first-child { white-space: nowrap; color: var(--color-muted); font-variant-numeric: tabular-nums; }
 .chat-log td:last-child { overflow-wrap: anywhere; }
 .chat-log button { min-height: 0; padding: 0; border: 0; color: inherit; text-decoration: underline; text-underline-offset: 2px; white-space: normal; }
+.files-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.files-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; flex: 1 1 240px; font-family: var(--font-mono); font-size: 14px; }
+.files-crumbs button, .files-list .open { min-height: 0; padding: 2px 4px; border: 0; color: inherit; text-decoration: underline; text-underline-offset: 2px; white-space: normal; text-align: left; }
+.files-list td:first-child { font-family: var(--font-mono); font-size: 14px; }
+.files-list td:last-child { width: 1%; white-space: nowrap; }
+#file-editor { margin-top: 16px; }
+#file-editor textarea { font-family: var(--font-mono); }
 .charts-range { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .charts-range button[aria-pressed="true"] { background: var(--color-paper-3); font-weight: 600; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 16px; }
@@ -243,6 +250,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
+        <button role="tab" id="tab-files" aria-selected="false" aria-controls="files-view">Files</button>
         <button role="tab" id="tab-wipe" aria-selected="false" aria-controls="wipe-view">Wipe</button>
         <button role="tab" id="tab-backups" aria-selected="false" aria-controls="backups-view">Backups</button>
         <button role="tab" id="tab-settings" aria-selected="false" aria-controls="settings-view">Settings</button>
@@ -267,6 +275,28 @@ dialog .actions { justify-content: flex-end; }
           <input id="broadcast-text" aria-label="Message to everyone in game" placeholder="Message everyone in game" autocomplete="off" maxlength="200" disabled>
           <button id="broadcast-send" disabled>Broadcast</button>
         </form>
+      </div>
+      <div id="files-view" class="panel" role="tabpanel" hidden>
+        <div class="files-bar">
+          <nav class="files-crumbs" id="files-crumbs" aria-label="Folder"></nav>
+          <button type="button" id="files-upload">Upload files</button>
+          <input id="files-input" type="file" multiple hidden aria-label="Files to upload">
+          <button type="button" id="files-new-folder">New folder</button>
+        </div>
+        <p class="form-status" id="files-status"></p>
+        <table class="files-list" id="files-list">
+          <thead><tr><th scope="col">Name</th><th scope="col" class="num">Size</th><th scope="col">Modified</th><th scope="col"><span hidden>Actions</span></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="file-editor" hidden>
+          <h2 id="file-editor-title"></h2>
+          <label class="field"><span>Some files are only read when the server starts.</span><textarea id="file-editor-text" rows="18" spellcheck="false" aria-label="File contents"></textarea></label>
+          <div class="form-actions">
+            <button id="file-editor-save" type="button">Save</button>
+            <button id="file-editor-close" type="button">Close</button>
+            <span class="form-status" id="file-editor-status"></span>
+          </div>
+        </div>
       </div>
       <div id="chat-view" class="panel" role="tabpanel" hidden>
         <form class="chat-search" id="chat-search">
@@ -775,7 +805,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', chat: 'chat-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', chat: 'chat-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -785,6 +815,7 @@ function refreshView() {
   if (view === 'wipe') { refreshWipe(); }
   if (view === 'charts') { refreshCharts(); }
   if (view === 'chat') { refreshChat(); }
+  if (view === 'files') { refreshFiles(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -843,6 +874,136 @@ for (const button of document.querySelectorAll('.charts-range button')) {
     refreshCharts();
   };
 }
+
+let filesPath = '', filesServer = null, editingFile = null;
+const filesUrl = (route, path) => `servers/${selected}/${route}?path=${encodeURIComponent(path)}`;
+const joinPath = name => filesPath ? `${filesPath}/${name}` : name;
+
+function formatSize(bytes) {
+  if (bytes < 1024) { return `${bytes} B`; }
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes, unit = -1;
+  do { value /= 1024; unit++; } while (value >= 1024 && unit < units.length - 1);
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+function openFolder(path) {
+  filesPath = path;
+  $('file-editor').hidden = true;
+  setText($('files-status'), '');
+  refreshFiles();
+}
+
+async function refreshFiles() {
+  if (!selected) { return; }
+  if (filesServer !== selected) { filesServer = selected; filesPath = ''; $('file-editor').hidden = true; }
+
+  const crumbs = $('files-crumbs');
+  crumbs.replaceChildren();
+  const parts = filesPath ? filesPath.split('/') : [];
+  ['Server folder', ...parts].forEach((part, index) => {
+    if (index) { crumbs.append('/'); }
+    const button = actionButton(part, () => openFolder(parts.slice(0, index).join('/')));
+    if (index === parts.length) { button.setAttribute('aria-current', 'location'); }
+    crumbs.append(button);
+  });
+
+  const entries = await api(filesUrl('files', filesPath)).catch(() => null);
+  const body = $('files-list').tBodies[0];
+  body.replaceChildren();
+  if (!entries) { setText($('files-status'), 'This folder could not be opened.'); return; }
+  if (!entries.length) { setText($('files-status'), 'This folder is empty.'); }
+
+  for (const entry of entries) {
+    const path = joinPath(entry.name);
+    const row = body.insertRow();
+    const name = row.insertCell();
+    if (entry.folder) {
+      const open = actionButton(`${entry.name}/`, () => openFolder(path), 'open');
+      name.append(open);
+    } else {
+      name.textContent = entry.name;
+    }
+    const size = row.insertCell();
+    size.className = 'num';
+    size.textContent = entry.folder ? '' : formatSize(entry.size);
+    row.insertCell().textContent = new Date(entry.modified).toLocaleString();
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    if (!entry.folder && entry.size <= 2 * 1024 * 1024) { actions.append(actionButton('Edit', () => editFile(path))); }
+    if (!entry.folder) { actions.append(actionButton('Download', () => downloadFile(path, entry.name))); }
+    actions.append(actionButton('Delete', async () => {
+      const what = entry.folder ? `the folder ${entry.name} and everything in it` : entry.name;
+      if (await confirmAction('Delete', `Delete ${what}? This cannot be undone.`, false) === null) { return; }
+      const response = await fetch(`/api/${filesUrl('files', path)}`, { method: 'DELETE', headers: { 'X-ToolCupboard-Token': token || '' } }).catch(() => null);
+      setText($('files-status'), response?.ok ? `Deleted ${entry.name}.` : (await response?.json().catch(() => null))?.error || `Could not delete ${entry.name}.`);
+      refreshFiles();
+    }, 'danger'));
+    row.insertCell().append(actions);
+  }
+}
+
+async function fetchFile(path) {
+  const response = await fetch(`/api/${filesUrl('files/content', path)}`, { headers: { 'X-ToolCupboard-Token': token || '' } }).catch(() => null);
+  return response?.ok ? response : null;
+}
+
+async function downloadFile(path, name) {
+  const response = await fetchFile(path);
+  if (!response) { setText($('files-status'), `Could not download ${name}.`); return; }
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(await response.blob());
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+}
+
+async function editFile(path) {
+  const response = await fetchFile(path);
+  if (!response) { setText($('files-status'), 'The file could not be opened.'); return; }
+  const text = await response.text();
+  if (text.includes('\u0000')) { setText($('files-status'), 'That file is not text, so it cannot be edited here.'); return; }
+  editingFile = path;
+  setText($('file-editor-title'), path);
+  $('file-editor-text').value = text;
+  setText($('file-editor-status'), '');
+  $('file-editor').hidden = false;
+  $('file-editor-text').focus();
+}
+
+async function putFile(path, body) {
+  const response = await fetch(`/api/${filesUrl('files/content', path)}`, { method: 'PUT', headers: { 'X-ToolCupboard-Token': token || '', 'Content-Type': 'application/octet-stream' }, body }).catch(() => null);
+  return response?.ok ? null : (await response?.json().catch(() => null))?.error || 'The request failed.';
+}
+
+$('file-editor-save').onclick = async () => {
+  if (!editingFile) { return; }
+  const error = await putFile(editingFile, $('file-editor-text').value);
+  setText($('file-editor-status'), error || 'Saved.');
+  if (!error) { refreshFiles(); }
+};
+$('file-editor-close').onclick = () => { $('file-editor').hidden = true; editingFile = null; };
+
+$('files-upload').onclick = () => $('files-input').click();
+$('files-input').onchange = async () => {
+  const files = [...$('files-input').files];
+  $('files-input').value = '';
+  for (const [index, file] of files.entries()) {
+    setText($('files-status'), `Uploading ${file.name} (${index + 1} of ${files.length})`);
+    const error = await putFile(joinPath(file.name), file);
+    if (error) { setText($('files-status'), `${file.name}: ${error}`); refreshFiles(); return; }
+  }
+  setText($('files-status'), files.length ? `Uploaded ${files.length} file${files.length === 1 ? '' : 's'}.` : '');
+  refreshFiles();
+};
+
+$('files-new-folder').onclick = async () => {
+  const name = (await confirmAction('New folder', `Create a folder in ${filesPath || 'the server folder'}.`, true, 'Folder name'))?.trim();
+  if (!name) { return; }
+  const response = await fetch(`/api/${filesUrl('files/folder', joinPath(name))}`, { method: 'POST', headers: { 'X-ToolCupboard-Token': token || '' } }).catch(() => null);
+  setText($('files-status'), response?.ok ? `Created ${name}.` : (await response?.json().catch(() => null))?.error || 'The folder could not be created.');
+  refreshFiles();
+};
 
 async function refreshChat() {
   if (!selected) { return; }
