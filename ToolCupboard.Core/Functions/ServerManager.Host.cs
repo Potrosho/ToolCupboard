@@ -954,6 +954,8 @@ namespace ToolCupboard.Functions
                 case "restart": if (!started) { return false; } await GameServer_Restart(server); return true;
                 case "update": if (!stopped) { return false; } await GameServer_Update(server); return true;
                 case "backup": if (!stopped) { return false; } await GameServer_Backup(server); return true;
+                case "kill": if (stopped) { return false; } await GameServer_Kill(server); return true;
+                case "clear-console": GetServerMetadata(server.ID).ServerConsole.Clear(); return true;
                 case "install-oxide": return stopped && await RunWebInstall(server, RustModFramework.Oxide);
                 case "install-carbon": return stopped && await RunWebInstall(server, RustModFramework.Carbon);
                 case "test-webhook":
@@ -972,6 +974,7 @@ namespace ToolCupboard.Functions
         {
             return Servers.Select(server => (object)new
             {
+                stats = GetWebStats(server.ID),
                 id = server.ID,
                 name = server.Name,
                 status = server.Status,
@@ -982,6 +985,44 @@ namespace ToolCupboard.Functions
                 players = server.Maxplayers,
                 uptime = server.Uptime
             }).ToArray();
+        }
+
+        object GetWebStats(string serverId)
+        {
+            ServerMetadata metadata = GetServerMetadata(serverId);
+            RustServerInfo info = metadata.Stats;
+            return info == null ? null : new
+            {
+                fps = Math.Round(info.Framerate),
+                entities = info.EntityCount,
+                queued = info.Queued,
+                joining = info.Joining,
+                netIn = info.NetworkIn,
+                netOut = info.NetworkOut,
+                cpu = Math.Round(metadata.Cpu, 1),
+                memoryMb = Math.Round(metadata.MemoryMb),
+                version = info.Version
+            };
+        }
+
+        // Saved samples for the charts, as one array of values per metric
+        public object GetWebMetrics(string serverId, int hours)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null || hours < 1 || hours > ServerStats.KeepDays * 24) { return null; }
+
+            List<StatsSample> samples = ServerStats.Read(server.ID, TimeSpan.FromHours(hours));
+            return new
+            {
+                times = samples.Select(s => s.Time.ToString("o")).ToArray(),
+                values = StatsSample.Names.Select((name, i) => new { name, data = samples.Select(s => s.Values[i]).ToArray() }).ToArray()
+            };
+        }
+
+        public List<ChatMessage> GetWebChat(string serverId, string query, string channel, int days)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : ChatLog.Search(server.ID, query, channel, Math.Clamp(days, 1, 3650));
         }
 
         public string[] GetWebConsole(string serverId)

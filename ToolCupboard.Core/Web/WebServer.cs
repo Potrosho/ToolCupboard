@@ -145,6 +145,10 @@ namespace ToolCupboard.Web
 
             api.MapGet("/api/system", async () => Results.Json(await _servers.Run(_servers.GetWebSystem)));
 
+            api.MapGet("/api/servers/{id}/metrics", async (string id, int hours) => await _servers.Run(() => _servers.GetWebMetrics(id, hours)) is object metrics ? Results.Json(metrics) : Results.NotFound());
+
+            api.MapGet("/api/servers/{id}/chat", async (string id, string q, string channel, int? days) => await _servers.Run(() => _servers.GetWebChat(id, q, channel, days ?? 7)) is object chat ? Results.Json(chat) : Results.NotFound());
+
             api.MapGet("/api/public-ip", async () =>
             {
                 try { return Results.Json(new { ip = await Functions.RouterPorts.GetPublicIp() }); }

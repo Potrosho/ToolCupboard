@@ -56,6 +56,11 @@ namespace ToolCupboard.Functions
 
         public bool OpenRouterPorts;
         public string RouterStatus;
+
+        // Latest live numbers while RCON is connected, otherwise null
+        public RustServerInfo Stats;
+        public double Cpu;
+        public double MemoryMb;
     }
 
     public enum ServerStatus
@@ -231,6 +236,28 @@ namespace ToolCupboard.Functions
                 Log(server.ID, "[NOTICE] Server fail to stop gracefully");
             }
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+            SetServerStatus(server, "Stopped");
+        }
+
+        // Ends the process without a save, for a server that will not stop or start cleanly
+        public async Task GameServer_Kill(ServerTable server)
+        {
+            ServerMetadata metadata = _serverMetadata[int.Parse(server.ID)];
+            if (metadata.ServerStatus == ServerStatus.Stopped) { return; }
+
+            // Stopping first, so the exit is not treated as a crash
+            metadata.ServerStatus = ServerStatus.Stopping;
+            Log(server.ID, "Action: Kill Process");
+            SetServerStatus(server, "Stopping");
+
+            try { metadata.Process?.Kill(true); }
+            catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception) { } // already gone
+            await EndAllRunningProcess(server.ID);
+
+            metadata.Process = null;
+            metadata.ServerStatus = ServerStatus.Stopped;
+            Log(server.ID, "Server: Killed");
+            CloseRouterPortsIfOn(server);
             SetServerStatus(server, "Stopped");
         }
 
@@ -907,18 +934,69 @@ namespace ToolCupboard.Functions
                 using (RustRcon rcon = client)
                 {
                     rcon.MessageReceived += text => _context.Post(_ => AddConsoleOutput(serverId, text), null);
+                    rcon.ChatReceived += json =>
+                    {
+                        ChatMessage message = ChatMessage.FromRcon(json);
+                        try { if (message != null) { ChatLog.Append(server.ID, message); } }
+                        catch (IOException e) { Debug.WriteLine($"Could not save chat: {e.Message}"); }
+                    };
 
                     if (await rcon.ConnectAsync())
                     {
                         _serverMetadata[serverId].Rcon = rcon;
                         Log(server.ID, "RCON: Connected");
+                        PollStats(server, rcon, p);
                         await rcon.Completion;
                         _serverMetadata[serverId].Rcon = null;
+                        _serverMetadata[serverId].Stats = null;
                         Log(server.ID, "RCON: Disconnected");
                     }
                 }
 
                 await Task.Delay(5000);
+            }
+        }
+
+        const int STATS_INTERVAL_SECONDS = 10;
+        const int STATS_SAVE_EVERY = 6; // one saved sample a minute
+
+        // Reads serverinfo and the process load while RCON is connected, and saves a sample each minute
+        async void PollStats(ServerTable server, RustRcon rcon, Process p)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            TimeSpan lastCpuTime = TimeSpan.Zero;
+            DateTime lastCheck = DateTime.Now;
+
+            for (int tick = 0; rcon.IsConnected && !p.HasExited; tick++)
+            {
+                RustServerInfo info = await rcon.GetServerInfoAsync();
+                if (info == null || !rcon.IsConnected) { await Task.Delay(STATS_INTERVAL_SECONDS * 1000); continue; }
+
+                try
+                {
+                    p.Refresh();
+                    TimeSpan cpuTime = p.TotalProcessorTime;
+                    DateTime now = DateTime.Now;
+                    metadata.Cpu = lastCpuTime == TimeSpan.Zero ? 0 : Math.Min(100, (cpuTime - lastCpuTime).TotalMilliseconds / (now - lastCheck).TotalMilliseconds / Environment.ProcessorCount * 100);
+                    metadata.MemoryMb = p.WorkingSet64 / 1048576.0;
+                    lastCpuTime = cpuTime;
+                    lastCheck = now;
+                }
+                catch (InvalidOperationException)
+                {
+                    break; // the process exited
+                }
+
+                metadata.Stats = info;
+
+                if (tick % STATS_SAVE_EVERY == STATS_SAVE_EVERY - 1)
+                {
+                    var sample = new StatsSample { Time = DateTime.Now, Fps = info.Framerate, Players = info.Players, Queued = info.Queued, Entities = info.EntityCount, NetIn = info.NetworkIn, NetOut = info.NetworkOut, Cpu = metadata.Cpu, MemoryMb = metadata.MemoryMb };
+                    try { await Task.Run(() => ServerStats.Append(server.ID, sample)); }
+                    catch (IOException e) { Debug.WriteLine($"Could not save stats: {e.Message}"); }
+                }
+
+                await Task.Delay(STATS_INTERVAL_SECONDS * 1000);
             }
         }
 

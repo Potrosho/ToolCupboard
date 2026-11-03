@@ -74,6 +74,18 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .facts { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr)); gap: 12px 24px; margin: 0; padding: 12px 0; border-block: 1px solid var(--color-rule); }
 .facts dt { color: var(--color-muted); font-size: 14px; }
 .facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.facts.live { grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 0; padding-top: 0; }
+.chat-search { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.chat-log td:first-child { white-space: nowrap; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.chat-log td:last-child { overflow-wrap: anywhere; }
+.chat-log button { min-height: 0; padding: 0; border: 0; color: inherit; text-decoration: underline; text-underline-offset: 2px; white-space: normal; }
+.charts-range { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.charts-range button[aria-pressed="true"] { background: var(--color-paper-3); font-weight: 600; }
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 16px; }
+.chart h3 { margin: 0; font-size: 15px; }
+.chart p { margin: 2px 0 6px; color: var(--color-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.chart svg { display: block; width: 100%; height: 90px; background: var(--color-well); border-radius: var(--radius-control); }
+.chart polyline { fill: none; stroke: var(--color-live); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .address { display: flex; align-items: center; gap: 10px; }
 .address button { min-height: 28px; padding: 0 8px; font-size: 14px; font-weight: 400; }
 
@@ -86,6 +98,14 @@ h2 { margin: 0 0 6px; font: 600 15px/1.4 var(--font-body); }
 #console { height: 58vh; min-height: 320px; margin: 0; padding: 14px 16px; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; font: 14px/1.55 var(--font-mono); }
 form.command { position: relative; z-index: 1; display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--color-rule); background: var(--color-paper-2); }
 form.command input { font-family: var(--font-mono); }
+.console-tools { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; border-bottom: 1px solid var(--color-rule); background: var(--color-paper-2); }
+.console-tools select { width: auto; }
+.console-tools input { flex: 1 1 160px; width: auto; }
+.quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--color-rule); }
+.quick button { min-height: 30px; padding: 0 10px; font-family: var(--font-mono); font-size: 14px; }
+.quick .remove { padding: 0 8px; color: var(--color-muted); font-family: var(--font-body); }
+.quick form { display: flex; gap: 6px; flex: 1 1 220px; }
+.quick input { min-height: 30px; font-family: var(--font-mono); font-size: 14px; }
 aside { display: grid; gap: 22px; min-width: 0; }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-weight: 400; font-size: 14px; color: var(--color-muted); }
@@ -151,8 +171,8 @@ dialog .actions { justify-content: flex-end; }
 
 @media (max-width: 60rem) {
   .workspace { grid-template-columns: minmax(0, 1fr); }
-  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .facts div:first-child { grid-column: 1 / -1; }
+  .facts, .facts.live { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facts:not(.live) div:first-child { grid-column: 1 / -1; }
   .row-actions { justify-content: flex-start; }
   .fields { grid-template-columns: minmax(0, 1fr); }
   #console { height: 44vh; }
@@ -197,6 +217,7 @@ dialog .actions { justify-content: flex-end; }
       <button id="restart" disabled>Restart</button>
       <button id="update" disabled>Update</button>
       <button id="backup" disabled>Backup</button>
+      <button id="kill" class="danger" disabled title="Ends the server process without saving">Kill process</button>
     </div>
   </div>
   <dl class="facts">
@@ -207,10 +228,20 @@ dialog .actions { justify-content: flex-end; }
     <div><dt>Players</dt><dd id="fact-players">None</dd></div>
     <div><dt>Uptime</dt><dd id="fact-uptime">None</dd></div>
   </dl>
+  <dl class="facts live" id="live-facts" hidden>
+    <div><dt>FPS</dt><dd id="live-fps"></dd></div>
+    <div><dt>Entities</dt><dd id="live-entities"></dd></div>
+    <div><dt>Queue</dt><dd id="live-queue"></dd></div>
+    <div><dt>Network in / out</dt><dd id="live-network"></dd></div>
+    <div><dt>Server CPU</dt><dd id="live-cpu"></dd></div>
+    <div><dt>Server memory</dt><dd id="live-memory"></dd></div>
+  </dl>
   <div class="workspace">
     <section aria-label="Server workspace">
       <div class="tabs" role="tablist">
         <button role="tab" id="tab-console" aria-selected="true" aria-controls="console-view">Console</button>
+        <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
+        <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
         <button role="tab" id="tab-wipe" aria-selected="false" aria-controls="wipe-view">Wipe</button>
         <button role="tab" id="tab-backups" aria-selected="false" aria-controls="backups-view">Backups</button>
@@ -218,11 +249,46 @@ dialog .actions { justify-content: flex-end; }
 
       </div>
       <div class="well" id="console-well">
+        <div class="console-tools">
+          <select id="console-level" aria-label="Show lines"><option value="all">All lines</option><option value="errors">Errors</option><option value="warnings">Warnings</option></select>
+          <input id="console-filter" type="search" aria-label="Filter the console" placeholder="Filter" autocomplete="off">
+          <button type="button" id="console-copy">Copy</button>
+          <button type="button" id="console-clear">Clear</button>
+        </div>
+        <div class="quick" id="quick" aria-label="Quick commands">
+          <form id="quick-add"><input id="quick-text" aria-label="New quick command" placeholder="Add a quick command" autocomplete="off"><button>Add</button></form>
+        </div>
         <pre id="console" tabindex="0" aria-live="off"></pre>
         <form class="command" id="command">
           <input id="command-text" aria-label="Server command" placeholder="Start the server to send commands" autocomplete="off" disabled>
           <button id="command-send" disabled>Send</button>
         </form>
+        <form class="command" id="broadcast">
+          <input id="broadcast-text" aria-label="Message to everyone in game" placeholder="Message everyone in game" autocomplete="off" maxlength="200" disabled>
+          <button id="broadcast-send" disabled>Broadcast</button>
+        </form>
+      </div>
+      <div id="chat-view" class="panel" role="tabpanel" hidden>
+        <form class="chat-search" id="chat-search">
+          <input id="chat-query" type="search" aria-label="Search messages, names, or a Steam ID" placeholder="Search messages, names, or a Steam ID" autocomplete="off">
+          <select id="chat-channel" aria-label="Channel"><option value="">All channels</option><option>Global</option><option>Team</option><option>Local</option><option>Clan</option><option>Server</option></select>
+          <select id="chat-days" aria-label="Time range"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="3650">All time</option></select>
+        </form>
+        <table class="chat-log" id="chat-log" hidden>
+          <thead><tr><th scope="col">Time</th><th scope="col">Channel</th><th scope="col">Player</th><th scope="col">Message</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note" id="chat-note">No chat messages yet. ToolCupboard saves chat while the server runs and RCON is connected.</p>
+      </div>
+      <div id="charts-view" class="panel" role="tabpanel" hidden>
+        <div class="charts-range" role="group" aria-label="Time range">
+          <button type="button" data-hours="1" aria-pressed="true">Last hour</button>
+          <button type="button" data-hours="6" aria-pressed="false">6 hours</button>
+          <button type="button" data-hours="24" aria-pressed="false">24 hours</button>
+          <button type="button" data-hours="168" aria-pressed="false">7 days</button>
+        </div>
+        <div class="charts" id="charts"></div>
+        <p class="note" id="charts-note" hidden>No samples yet. ToolCupboard saves one a minute while the server runs and RCON is connected.</p>
       </div>
       <div id="plugins-view" role="tabpanel" hidden>
         <div class="framework-setup" id="framework-setup" hidden>
@@ -546,6 +612,16 @@ function renderSelected() {
   setText($('fact-map'), server?.map || 'None');
   setText($('fact-players'), server?.players || 'None');
   setText($('fact-uptime'), server?.uptime || 'None');
+  const stats = running ? server.stats : null;
+  $('live-facts').hidden = !stats;
+  if (stats) {
+    setText($('live-fps'), stats.fps);
+    setText($('live-entities'), stats.entities.toLocaleString());
+    setText($('live-queue'), stats.joining ? `${stats.queued} (${stats.joining} joining)` : stats.queued);
+    setText($('live-network'), `${formatRate(stats.netIn)} / ${formatRate(stats.netOut)}`);
+    setText($('live-cpu'), `${stats.cpu}%`);
+    setText($('live-memory'), `${(stats.memoryMb / 1024).toFixed(1)} GB`);
+  }
   $('copy-address').disabled = !server;
   $('copy-public').disabled = !server;
   $('start').disabled = status !== 'Stopped';
@@ -553,6 +629,10 @@ function renderSelected() {
   $('backup').disabled = status !== 'Stopped';
   $('stop').disabled = !running;
   $('restart').disabled = !running;
+  $('kill').disabled = !server || status === 'Stopped';
+  $('broadcast-text').disabled = !running;
+  $('broadcast-send').disabled = !running;
+  for (const button of $('quick').querySelectorAll('button.run')) { button.disabled = !running; }
   $('command-text').disabled = !running;
   $('command-send').disabled = !running;
   $('command-text').placeholder = running ? 'Type a server command' : 'Start the server to send commands';
@@ -586,13 +666,27 @@ async function refreshServers() {
   }
 }
 
+let consoleLines = [];
+const levelPatterns = { errors: /error|exception|failed|fatal/i, warnings: /warn/i };
+
+function filteredConsole() {
+  const level = levelPatterns[$('console-level').value];
+  const filter = $('console-filter').value.trim().toLowerCase();
+  return consoleLines.filter(line => (!level || level.test(line)) && (!filter || line.toLowerCase().includes(filter)));
+}
+
 async function refreshConsole() {
   if (!selected) { return; }
   const lines = await api(`servers/${selected}/console`).catch(() => null);
+  if (lines) { consoleLines = lines; }
+  showConsole();
+}
+
+function showConsole() {
   const view = $('console');
-  if (!lines || hasSelectionIn(view)) { return; }
+  if (hasSelectionIn(view)) { return; }
   const atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 4;
-  const text = lines.join('\n');
+  const text = filteredConsole().join('\n');
   if (text !== view.textContent) {
     view.textContent = text;
     if (atBottom) { view.scrollTop = view.scrollHeight; }
@@ -664,7 +758,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', chat: 'chat-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -672,6 +766,8 @@ function refreshView() {
     if (!$('results').tBodies[0].rows.length) { searchPlugins(1); }
   }
   if (view === 'wipe') { refreshWipe(); }
+  if (view === 'charts') { refreshCharts(); }
+  if (view === 'chat') { refreshChat(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -717,6 +813,84 @@ $('wipe-now').onclick = async () => {
   setText($('wipe-status'), error || 'Wipe complete.');
   refreshWipe();
 };
+
+function formatRate(bytes) { return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB/s` : `${Math.round(bytes / 1024)} KB/s`; }
+
+const chartLabels = { fps: ['FPS', v => Math.round(v)], players: ['Players', v => Math.round(v)], queued: ['Queue', v => Math.round(v)], entities: ['Entities', v => Math.round(v).toLocaleString()], netIn: ['Network in', formatRate], netOut: ['Network out', formatRate], cpu: ['Server CPU', v => `${v.toFixed(1)}%`], memoryMb: ['Server memory', v => `${(v / 1024).toFixed(1)} GB`] };
+let chartHours = 1;
+
+for (const button of document.querySelectorAll('.charts-range button')) {
+  button.onclick = () => {
+    chartHours = Number(button.dataset.hours);
+    for (const other of document.querySelectorAll('.charts-range button')) { other.setAttribute('aria-pressed', String(other === button)); }
+    refreshCharts();
+  };
+}
+
+async function refreshChat() {
+  if (!selected) { return; }
+  const params = new URLSearchParams({ q: $('chat-query').value, channel: $('chat-channel').value, days: $('chat-days').value });
+  const messages = await api(`servers/${selected}/chat?${params}`).catch(() => null) || [];
+  const body = $('chat-log').tBodies[0];
+  body.replaceChildren();
+  for (const message of messages) {
+    const row = body.insertRow();
+    row.insertCell().textContent = new Date(message.time).toLocaleString();
+    row.insertCell().textContent = message.channel;
+    const who = document.createElement('button');
+    who.type = 'button';
+    who.textContent = message.name || 'Server';
+    who.title = message.steamId ? `Show only ${message.name} (${message.steamId})` : '';
+    who.onclick = () => { $('chat-query').value = message.steamId || message.name; refreshChat(); };
+    row.insertCell().append(who);
+    row.insertCell().textContent = message.message;
+  }
+  $('chat-log').hidden = !messages.length;
+  setText($('chat-note'), messages.length >= 300 ? 'Showing the newest 300 matches. Search to narrow it down.' : messages.length ? '' : 'No matching chat messages.');
+  $('chat-note').hidden = messages.length > 0 && messages.length < 300;
+}
+
+let chatTimer;
+$('chat-search').onsubmit = event => { event.preventDefault(); refreshChat(); };
+$('chat-query').oninput = () => { clearTimeout(chatTimer); chatTimer = setTimeout(refreshChat, 300); };
+$('chat-channel').onchange = refreshChat;
+$('chat-days').onchange = refreshChat;
+
+async function refreshCharts() {
+  if (!selected) { return; }
+  const metrics = await api(`servers/${selected}/metrics?hours=${chartHours}`).catch(() => null);
+  const charts = $('charts');
+  charts.replaceChildren();
+  $('charts-note').hidden = Boolean(metrics?.times.length);
+  if (!metrics?.times.length) { return; }
+
+  const start = Date.now() - chartHours * 3600000;
+  const xs = metrics.times.map(time => (Date.parse(time) - start) / (chartHours * 3600000) * 100);
+  for (const { name, data } of metrics.values) {
+    const [label, format] = chartLabels[name];
+    const max = Math.max(...data), min = Math.min(...data);
+    const average = data.reduce((sum, v) => sum + v, 0) / data.length;
+    const top = max || 1;
+    const chart = document.createElement('section');
+    chart.className = 'chart';
+    const title = document.createElement('h3');
+    title.textContent = label;
+    const summary = document.createElement('p');
+    summary.textContent = `Now ${format(data[data.length - 1])}, min ${format(min)}, average ${format(average)}, max ${format(max)}`;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', `${label} over the selected range. ${summary.textContent}`);
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    const points = data.map((v, i) => `${xs[i].toFixed(2)},${(96 - v / top * 92).toFixed(2)}`);
+    // A lone sample is drawn as a dot
+    line.setAttribute('points', (points.length === 1 ? [points[0], points[0]] : points).join(' '));
+    svg.append(line);
+    chart.append(title, summary, svg);
+    charts.append(chart);
+  }
+}
 
 async function refreshBackups() {
   if (!selected) { return; }
@@ -1141,6 +1315,76 @@ $('copy-public').onclick = async () => {
   await copyFact($('copy-public'), $('fact-public').textContent);
 };
 
+$('console-level').onchange = showConsole;
+$('console-filter').oninput = showConsole;
+$('console-copy').onclick = () => copyFact($('console-copy'), filteredConsole().join('\n'));
+$('console-clear').onclick = async () => {
+  await api(`servers/${selected}/clear-console`, { method: 'POST' }).catch(() => null);
+  refreshConsole();
+};
+
+$('kill').onclick = async () => {
+  if (await confirmAction('Kill process', 'End the server process right away, without saving? Use this only when a stop or restart is stuck.', false) === null) { return; }
+  $('kill').disabled = true;
+  await api(`servers/${selected}/kill`, { method: 'POST' }).catch(() => null);
+  refreshServers();
+};
+
+async function sendCommand(text) {
+  await api(`servers/${selected}/command`, { method: 'POST', body: JSON.stringify({ text }) }).catch(() => null);
+  refreshConsole();
+}
+
+$('broadcast').onsubmit = async event => {
+  event.preventDefault();
+  // say takes the rest of the line as the message, so quotes would show in chat
+  const text = $('broadcast-text').value.trim().replace(/[\r\n;]/g, ' ');
+  if (!text || !selected) { return; }
+  $('broadcast-text').value = '';
+  await sendCommand(`global.say ${text}`);
+};
+
+// Quick commands are kept in this browser
+const defaultQuick = ['server.save', 'serverinfo', 'status'];
+function loadQuick() {
+  try { return JSON.parse(localStorage.getItem('quickCommands')) || defaultQuick; } catch { return defaultQuick; }
+}
+function saveQuick(list) {
+  try { localStorage.setItem('quickCommands', JSON.stringify(list)); } catch { }
+  renderQuick();
+}
+function renderQuick() {
+  const box = $('quick');
+  for (const old of box.querySelectorAll('.chip')) { old.remove(); }
+  const running = current()?.status === 'Started';
+  for (const command of loadQuick()) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const run = document.createElement('button');
+    run.type = 'button';
+    run.className = 'run';
+    run.textContent = command;
+    run.disabled = !running;
+    run.onclick = () => sendCommand(command);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'remove';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', `Remove ${command}`);
+    remove.onclick = () => saveQuick(loadQuick().filter(c => c !== command));
+    chip.append(run, remove);
+    box.insertBefore(chip, $('quick-add'));
+  }
+}
+$('quick-add').onsubmit = event => {
+  event.preventDefault();
+  const text = $('quick-text').value.trim();
+  if (!text) { return; }
+  $('quick-text').value = '';
+  saveQuick([...loadQuick().filter(c => c !== text), text]);
+};
+renderQuick();
+
 $('command').onsubmit = async event => {
   event.preventDefault();
   const text = $('command-text').value.trim();
@@ -1159,6 +1403,7 @@ function tick() {
 refreshServers().then(() => { refreshDetails(); showView(views[view] ? view : 'console'); });
 setInterval(tick, 2000);
 setInterval(() => { if (!document.hidden) { refreshPlayers(); } }, 6000);
+setInterval(() => { if (!document.hidden && view === 'charts') { refreshCharts(); } }, 60000);
 </script>
 </body>
 </html>

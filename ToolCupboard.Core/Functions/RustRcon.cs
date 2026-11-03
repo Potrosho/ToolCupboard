@@ -76,6 +76,9 @@ namespace ToolCupboard.Functions
         /// <summary>Raised for server output that is not a reply to a command.</summary>
         public event Action<string> MessageReceived;
 
+        /// <summary>Raised with the JSON of each chat message.</summary>
+        public event Action<string> ChatReceived;
+
         /// <summary>Completes when the connection ends.</summary>
         public Task Completion { get; private set; } = Task.CompletedTask;
 
@@ -155,6 +158,21 @@ namespace ToolCupboard.Functions
             try
             {
                 return JsonConvert.DeserializeObject<List<RustPlayer>>(reply) ?? new List<RustPlayer>();
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        public async Task<RustServerInfo> GetServerInfoAsync()
+        {
+            string reply = await SendAsync("serverinfo");
+            if (reply == null) { return null; }
+
+            try
+            {
+                return JsonConvert.DeserializeObject<RustServerInfo>(reply);
             }
             catch (JsonException)
             {
@@ -260,7 +278,9 @@ namespace ToolCupboard.Functions
             }
             else if (!string.IsNullOrWhiteSpace(text))
             {
-                MessageReceived?.Invoke(packet.Value<string>("Type") == "Chat" ? FormatChat(text) : text);
+                bool chat = packet.Value<string>("Type") == "Chat";
+                if (chat) { ChatReceived?.Invoke(text); }
+                MessageReceived?.Invoke(chat ? FormatChat(text) : text);
             }
         }
 
