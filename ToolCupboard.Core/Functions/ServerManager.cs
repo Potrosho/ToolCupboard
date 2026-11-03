@@ -65,6 +65,12 @@ namespace ToolCupboard.Functions
 
         // The ToolCupboard mod version reported by the running server, or null when it is not loaded
         public string ModVersion;
+
+        // True when Rust posts F7 reports to ToolCupboard, false when another report address was already set
+        public bool ReportsViaEndpoint;
+
+        // Cached count for the Reports tab, null when it must be counted again
+        public int? OpenReports;
     }
 
     public enum ServerStatus
@@ -951,6 +957,12 @@ namespace ToolCupboard.Functions
                 using (RustRcon rcon = client)
                 {
                     rcon.MessageReceived += text => _context.Post(_ => AddConsoleOutput(serverId, text), null);
+                    rcon.ReportReceived += json =>
+                    {
+                        if (_serverMetadata[serverId].ReportsViaEndpoint) { return; } // the same report also arrives with its screenshot
+                        try { _context.Post(_ => _ = AddReport(server, Reports.FromRcon(json), null), null); }
+                        catch (Newtonsoft.Json.JsonException) { }
+                    };
                     rcon.ChatReceived += json =>
                     {
                         ChatMessage message = ChatMessage.FromRcon(json);
@@ -964,6 +976,7 @@ namespace ToolCupboard.Functions
                         Log(server.ID, "RCON: Connected");
                         PollStats(server, rcon, p);
                         PollModEvents(server, rcon, p);
+                        await PointReportsHere(server, rcon);
                         await rcon.Completion;
                         _serverMetadata[serverId].Rcon = null;
                         _serverMetadata[serverId].Stats = null;

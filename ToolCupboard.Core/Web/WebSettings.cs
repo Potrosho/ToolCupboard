@@ -95,6 +95,12 @@ namespace ToolCupboard.Web
         public string File { get; set; }
     }
 
+    public class WebReportUpdate
+    {
+        public string Status { get; set; }
+        public string Note { get; set; }
+    }
+
     public class WebPluginUpload
     {
         public string FileName { get; set; }

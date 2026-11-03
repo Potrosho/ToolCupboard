@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HarmonyLib;
 using Newtonsoft.Json;
+using UnityEngine;
 
 namespace ToolCupboard.Mod
 {
@@ -12,7 +13,7 @@ namespace ToolCupboard.Mod
     public class ToolCupboardMod : IHarmonyModHooks
     {
         // ToolCupboard compares this with the copy it ships, and replaces an older mod
-        public const string Version = "3";
+        public const string Version = "4";
 
         public void OnLoaded(OnHarmonyModLoadedArgs args)
         {
@@ -62,6 +63,23 @@ namespace ToolCupboard.Mod
         {
             Add("version", "The ToolCupboard mod version", arg => arg.ReplyWith(JsonConvert.SerializeObject(new { version = ToolCupboardMod.Version })));
             Add("events", "Returns and clears the queued ToolCupboard events", arg => arg.ReplyWith(Events.Take()));
+            Add("context", "Where two players are relative to each other: toolcupboard.context <steamid> <steamid>", arg => arg.ReplyWith(Context(arg.GetString(0), arg.GetString(1))));
+        }
+
+        // For a player report: how far apart the two players are and whether they share a team
+        static string Context(string first, string second)
+        {
+            BasePlayer a = ulong.TryParse(first, out ulong idA) ? BasePlayer.FindAwakeOrSleepingByID(idA) : null;
+            BasePlayer b = ulong.TryParse(second, out ulong idB) ? BasePlayer.FindAwakeOrSleepingByID(idB) : null;
+            if (a == null || b == null) { return JsonConvert.SerializeObject(new { found = false }); }
+
+            return JsonConvert.SerializeObject(new
+            {
+                found = true,
+                distance = Mathf.Round(Vector3.Distance(a.transform.position, b.transform.position)),
+                sameTeam = a.currentTeam != 0 && a.currentTeam == b.currentTeam,
+                targetOnline = b.IsConnected
+            });
         }
 
         static void Add(string name, string description, Action<ConsoleSystem.Arg> call)

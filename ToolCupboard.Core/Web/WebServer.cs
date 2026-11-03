@@ -53,6 +53,15 @@ namespace ToolCupboard.Web
 
             string page = ReadPage();
             _app.MapGet("/", () => Results.Content(page, "text/html; charset=utf-8"));
+
+            // Rust posts F7 reports here (server.reportsserverendpoint). The key in the address says which server it is.
+            _app.MapPost("/report/{key}", async (string key, HttpRequest request) =>
+            {
+                if (!request.HasFormContentType) { return Results.BadRequest(); }
+                IFormCollection form = await request.ReadFormAsync();
+                bool saved = await _servers.Run(() => _servers.ReceiveEndpointReport(key, form["data"], form["userid"]));
+                return saved ? Results.Text("ok") : Results.NotFound();
+            });
             MapApi(_app);
 
             await _app.StartAsync();
@@ -347,6 +356,12 @@ namespace ToolCupboard.Web
                 bool? done = await _servers.Run(() => _servers.RunWebPluginAction(id, name, action));
                 return done == null ? Results.NotFound() : done == true ? Results.Ok() : Results.Conflict();
             });
+
+            api.MapGet("/api/servers/{id}/reports", async (string id) => await _servers.Run(() => _servers.GetWebReports(id)) is object reports ? Results.Json(reports) : Results.NotFound());
+
+            api.MapPut("/api/servers/{id}/reports/{reportId}", async (string id, string reportId, WebReportUpdate body) => Refused(await _servers.Run(() => _servers.UpdateWebReport(id, reportId, body?.Status, body?.Note))));
+
+            api.MapGet("/api/servers/{id}/reports/{reportId}/screenshot", async (string id, string reportId) => await _servers.Run(() => _servers.GetWebReportScreenshot(id, reportId)) is string url ? Results.Json(new { url }) : Results.NotFound());
 
             api.MapGet("/api/servers/{id}/activity", async (string id, string q, string type, int? days) => await _servers.Run(() => _servers.GetWebActivity(id, q, type, days ?? 7)) is object entries ? Results.Json(entries) : Results.NotFound());
 

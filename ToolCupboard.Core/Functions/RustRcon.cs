@@ -79,6 +79,9 @@ namespace ToolCupboard.Functions
         /// <summary>Raised with the JSON of each chat message.</summary>
         public event Action<string> ChatReceived;
 
+        /// <summary>Raised with the JSON of each F7 player report Rust broadcasts.</summary>
+        public event Action<string> ReportReceived;
+
         /// <summary>Completes when the connection ends.</summary>
         public Task Completion { get; private set; } = Task.CompletedTask;
 
@@ -278,8 +281,10 @@ namespace ToolCupboard.Functions
             }
             else if (!string.IsNullOrWhiteSpace(text))
             {
-                bool chat = packet.Value<string>("Type") == "Chat";
+                string type = packet.Value<string>("Type");
+                bool chat = type == "Chat";
                 if (chat) { ChatReceived?.Invoke(text); }
+                if (type == "Report") { ReportReceived?.Invoke(text); }
                 MessageReceived?.Invoke(chat ? FormatChat(text) : text);
             }
         }

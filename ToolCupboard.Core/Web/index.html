@@ -101,6 +101,15 @@ h1 { margin: 0; font: 600 34px/1.15 var(--font-display); overflow-wrap: break-wo
 .note-body a { color: var(--color-focus); }
 #note-text { font-family: var(--font-mono); }
 @media (max-width: 720px) { #notes-view { grid-template-columns: minmax(0, 1fr); } }
+.report { display: grid; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--color-rule); }
+.report-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.report-head strong { font-family: var(--font-display); }
+.report-meta { color: var(--color-muted); font-size: 14px; }
+.report-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.report-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.report-actions select { width: auto; }
+.report-actions input { flex: 1 1 200px; width: auto; }
+.report img { max-width: min(100%, 640px); border: 1px solid var(--color-rule); border-radius: 4px; }
 .board-range { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-bottom: 12px; }
 .board-range input { width: auto; }
 #board th button { min-height: 0; padding: 0; border: 0; color: inherit; font: inherit; }
@@ -270,6 +279,7 @@ dialog .actions { justify-content: flex-end; }
         <button role="tab" id="tab-console" aria-selected="true" aria-controls="console-view">Console</button>
         <button role="tab" id="tab-charts" aria-selected="false" aria-controls="charts-view">Charts</button>
         <button role="tab" id="tab-activity" aria-selected="false" aria-controls="activity-view">Activity</button>
+        <button role="tab" id="tab-reports" aria-selected="false" aria-controls="reports-view">Reports</button>
         <button role="tab" id="tab-chat" aria-selected="false" aria-controls="chat-view">Chat</button>
         <button role="tab" id="tab-board" aria-selected="false" aria-controls="board-view">Leaderboard</button>
         <button role="tab" id="tab-plugins" aria-selected="false" aria-controls="plugins-view">Plugins</button>
@@ -320,6 +330,11 @@ dialog .actions { justify-content: flex-end; }
             <span class="form-status" id="file-editor-status"></span>
           </div>
         </div>
+      </div>
+      <div id="reports-view" class="panel" role="tabpanel" hidden>
+        <div class="report-actions"><select id="reports-filter" aria-label="Show reports"><option value="active">Open and being looked at</option><option value="">All reports</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></select></div>
+        <div id="reports-list"></div>
+        <p class="note" id="reports-note">No reports. Players send them from the F7 menu in game, and they show up here while the server runs.</p>
       </div>
       <div id="activity-view" class="panel" role="tabpanel" hidden>
         <form class="chat-search" id="activity-search">
@@ -735,6 +750,7 @@ function renderSelected() {
   setText($('fact-uptime'), server?.uptime || 'None');
   const stats = running ? server.stats : null;
   $('live-facts').hidden = !stats;
+  setText($('tab-reports'), server?.openReports ? `Reports (${server.openReports})` : 'Reports');
   if (stats) {
     setText($('live-fps'), stats.fps);
     setText($('live-entities'), stats.entities.toLocaleString());
@@ -880,7 +896,7 @@ function refreshDetails() { refreshConsole(); refreshPlayers(); }
 
 let view = new URLSearchParams(location.search).get('view') || 'console';
 
-const views = { console: 'console-well', files: 'files-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
+const views = { console: 'console-well', files: 'files-view', reports: 'reports-view', activity: 'activity-view', chat: 'chat-view', board: 'board-view', charts: 'charts-view', plugins: 'plugins-view', wipe: 'wipe-view', backups: 'backups-view', settings: 'settings-view', add: 'add-view', notes: 'notes-view', discord: 'discord-view', system: 'system-view' };
 
 function refreshView() {
   if (view === 'plugins') {
@@ -893,6 +909,7 @@ function refreshView() {
   if (view === 'files') { refreshFiles(); }
   if (view === 'board') { refreshBoard(); }
   if (view === 'activity') { refreshActivity(); }
+  if (view === 'reports') { refreshReports(); }
   if (view === 'backups') { refreshBackups(); }
   if (view === 'settings') { refreshSettings(); }
   if (view === 'add') { refreshJob(); }
@@ -1199,7 +1216,74 @@ $('note-form').onsubmit = async event => {
   openNote(name);
 };
 
-const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned' };
+const activityLabels = { join: 'Joined', leave: 'Left', death: 'Died', chat: 'Chat', kick: 'Kicked', ban: 'Banned', report: 'Reported' };
+const reportStatuses = { open: 'Open', looking: 'Being looked at', resolved: 'Resolved', dismissed: 'Dismissed' };
+
+async function refreshReports() {
+  if (!selected) { return; }
+  const all = await api(`servers/${selected}/reports`).catch(() => null) || [];
+  const filter = $('reports-filter').value;
+  const reports = all.filter(r => filter === 'active' ? r.status === 'open' || r.status === 'looking' : !filter || r.status === filter);
+  const list = $('reports-list');
+  list.replaceChildren(...reports.map(renderReport));
+  $('reports-note').hidden = reports.length > 0;
+  setText($('reports-note'), all.length ? 'No reports match.' : 'No reports. Players send them from the F7 menu in game, and they show up here while the server runs.');
+}
+
+function renderReport(report) {
+  const box = document.createElement('article');
+  box.className = 'report';
+  const head = document.createElement('div');
+  head.className = 'report-head';
+  const title = document.createElement('strong');
+  title.textContent = report.subject || report.type;
+  const meta = document.createElement('span');
+  meta.className = 'report-meta';
+  const who = report.reporterName || report.reporterId || 'Someone';
+  const context = [report.distance != null && `${report.distance} m apart`, report.sameTeam && 'same team'].filter(Boolean).join(', ');
+  meta.textContent = [report.type, new Date(report.time).toLocaleString(), report.targetId ? `${who} reported ${report.targetName || report.targetId}` : `from ${who}`, context].filter(Boolean).join(' · ');
+  head.append(title, meta);
+  const text = document.createElement('p');
+  text.className = 'report-text';
+  text.textContent = report.message || '';
+
+  const actions = document.createElement('div');
+  actions.className = 'report-actions';
+  const status = document.createElement('select');
+  status.setAttribute('aria-label', 'Status');
+  for (const [value, label] of Object.entries(reportStatuses)) { status.add(new Option(label, value, false, value === report.status)); }
+  const note = document.createElement('input');
+  note.value = report.note || '';
+  note.placeholder = 'Note for whoever picks this up';
+  note.setAttribute('aria-label', 'Note');
+  note.maxLength = 2000;
+  const saved = document.createElement('span');
+  saved.className = 'form-status';
+  const save = async () => {
+    const error = await send(`servers/${selected}/reports/${report.id}`, 'PUT', { status: status.value, note: note.value });
+    setText(saved, error || 'Saved');
+    if (!error) { report.status = status.value; refreshServers(); }
+  };
+  status.onchange = save;
+  actions.append(status, note, actionButton('Save note', save), saved);
+  if (report.targetId) { actions.append(actionButton('Activity', () => { $('activity-query').value = report.targetId; showView('activity'); })); }
+  if (report.hasScreenshot) {
+    actions.append(actionButton('Show screenshot', async event => {
+      event.target.disabled = true;
+      const shot = await api(`servers/${selected}/reports/${report.id}/screenshot`).catch(() => null);
+      if (!shot) { event.target.disabled = false; return; }
+      const image = document.createElement('img');
+      image.src = shot.url;
+      image.alt = `Screenshot sent with the report: ${report.subject || report.type}`;
+      box.append(image);
+      event.target.remove();
+    }));
+  }
+  box.append(head, text, actions);
+  return box;
+}
+
+$('reports-filter').onchange = refreshReports;
 
 function playerButton(name, steamId, onPick) {
   const button = document.createElement('button');

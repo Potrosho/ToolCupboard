@@ -1050,6 +1050,7 @@ namespace ToolCupboard.Functions
             return Servers.Select(server => (object)new
             {
                 stats = GetWebStats(server.ID),
+                openReports = OpenReportCount(server.ID),
                 id = server.ID,
                 name = server.Name,
                 status = server.Status,
@@ -1093,6 +1094,107 @@ namespace ToolCupboard.Functions
                 times = samples.Select(s => s.Time.ToString("o")).ToArray(),
                 values = StatsSample.Names.Select((name, i) => new { name, data = samples.Select(s => s.Values[i]).ToArray() }).ToArray()
             };
+        }
+
+        // Rust only sends F7 screenshots to a report address, so ToolCupboard sets one unless the server owner already uses their own
+        async Task PointReportsHere(ServerTable server, RustRcon rcon)
+        {
+            string ours = $"http://127.0.0.1:{Web.WebServer.Port}/report/";
+            System.Text.RegularExpressions.Match current = System.Text.RegularExpressions.Regex.Match(await rcon.SendAsync("server.reportsserverendpoint") ?? string.Empty, "\"(.*)\"");
+            string value = current.Success ? current.Groups[1].Value : string.Empty;
+
+            bool free = value.Length == 0 || value.StartsWith(ours, StringComparison.Ordinal);
+            if (free) { await rcon.SendAsync($"server.reportsserverendpoint \"{ours}{Reports.KeyFor(server.ID)}\""); }
+            _serverMetadata[int.Parse(server.ID)].ReportsViaEndpoint = free;
+            if (!free) { Log(server.ID, $"[NOTICE] F7 reports go to {value}, so ToolCupboard only gets player reports, without screenshots"); }
+        }
+
+        // Called by the report address. Returns false for an unknown key or data that is not a report.
+        public async Task<bool> ReceiveEndpointReport(string key, string data, string userId)
+        {
+            string serverId = Reports.ServerForKey(key);
+            ServerTable server = serverId == null ? null : GetServerTableById(serverId);
+            if (server == null || string.IsNullOrEmpty(data)) { return false; }
+
+            try
+            {
+                var (report, screenshot) = Reports.FromEndpoint(data, userId);
+                await AddReport(server, report, screenshot);
+                return true;
+            }
+            catch (Newtonsoft.Json.JsonException)
+            {
+                return false;
+            }
+        }
+
+        // Fills in names and, for player reports, where the two players were, then saves the report
+        async Task AddReport(ServerTable server, ServerReport report, byte[] screenshot)
+        {
+            RustRcon rcon = GetServerMetadata(server.ID).Rcon;
+            if (rcon != null && rcon.IsConnected)
+            {
+                if (string.IsNullOrEmpty(report.ReporterName))
+                {
+                    report.ReporterName = (await rcon.GetPlayersAsync())?.FirstOrDefault(p => p.SteamID == report.ReporterId)?.DisplayName;
+                }
+
+                if (report.IsPlayerReport && ulong.TryParse(report.ReporterId, out _) && ulong.TryParse(report.TargetId, out _))
+                {
+                    try
+                    {
+                        Newtonsoft.Json.Linq.JObject context = Newtonsoft.Json.Linq.JObject.Parse(await rcon.SendAsync($"toolcupboard.context {report.ReporterId} {report.TargetId}") ?? "{}");
+                        if (context.Value<bool?>("found") == true)
+                        {
+                            report.Distance = context.Value<double?>("distance");
+                            report.SameTeam = context.Value<bool?>("sameTeam");
+                        }
+                    }
+                    catch (Newtonsoft.Json.JsonException) { } // the mod is not loaded
+                }
+            }
+
+            try
+            {
+                Reports.Add(server.ID, report, screenshot);
+                ActivityLog.Append(server.ID, new ActivityEntry { Time = report.Time, Type = "report", SteamId = report.ReporterId, Name = report.ReporterName, OtherId = report.TargetId, OtherName = report.TargetName, Detail = $"{report.Type}: {report.Subject}" });
+            }
+            catch (IOException e)
+            {
+                Log(server.ID, $"[ERROR] Could not save an F7 report: {e.Message}");
+                return;
+            }
+
+            _serverMetadata[int.Parse(server.ID)].OpenReports = null;
+            Log(server.ID, $"Reports: {report.Type} report from {report.ReporterName ?? report.ReporterId}" + (report.IsPlayerReport ? $" about {report.TargetName}" : string.Empty));
+        }
+
+        public List<ServerReport> GetWebReports(string serverId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : Reports.List(server.ID);
+        }
+
+        public string UpdateWebReport(string serverId, string reportId, string status, string note)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            if (server == null) { return "That server does not exist."; }
+
+            string error = Reports.Update(server.ID, reportId, status, note);
+            if (error == null) { _serverMetadata[int.Parse(server.ID)].OpenReports = null; }
+            return error;
+        }
+
+        public string GetWebReportScreenshot(string serverId, string reportId)
+        {
+            ServerTable server = GetServerTableById(serverId);
+            return server == null ? null : Reports.ScreenshotUrl(server.ID, reportId);
+        }
+
+        int OpenReportCount(string serverId)
+        {
+            ServerMetadata metadata = GetServerMetadata(serverId);
+            return metadata.OpenReports ??= Reports.List(serverId).Count(r => r.Status == "open" || r.Status == "looking");
         }
 
         public List<ActivityEntry> GetWebActivity(string serverId, string query, string type, int days)
