@@ -542,6 +542,12 @@ dialog .actions { justify-content: flex-end; }
         <table id="usage"><thead><tr><th scope="col">Resource</th><th scope="col" class="num">Used</th><th scope="col">Detail</th></tr></thead><tbody></tbody></table>
         <p class="form-status" id="system-summary"></p>
         <div>
+          <h2>Updates</h2>
+          <p class="form-status" id="update-status">Checking GitHub for a new version</p>
+          <div class="form-actions"><button type="button" id="update-install" hidden>Update and restart</button><button type="button" id="update-check">Check again</button></div>
+          <p class="note" id="update-notes" hidden></p>
+        </div>
+        <div>
           <h2>App options</h2>
           <label class="check"><input id="opt-startOnLogin" type="checkbox">Start ToolCupboard on login</label>
           <label class="check"><input id="opt-restartOnCrash" type="checkbox">Restart ToolCupboard after a crash</label>
@@ -1354,7 +1360,34 @@ $('discord-view').onsubmit = async event => {
   if (!error) { refreshDiscord(); }
 };
 
+let updateChecked = false;
+
+async function checkUpdate() {
+  updateChecked = true;
+  setText($('update-status'), 'Checking GitHub for a new version');
+  $('update-install').hidden = true;
+  $('update-notes').hidden = true;
+  const release = await api('app/update').catch(() => null);
+  if (!release) { setText($('update-status'), 'Could not reach GitHub.'); return; }
+  if (!release.newer) { setText($('update-status'), `ToolCupboard ${release.current} is up to date.`); return; }
+  setText($('update-status'), `${release.latest} is available. You have ${release.current}.${release.canInstall ? ' Servers keep running while ToolCupboard restarts.' : ' Download it from the GitHub releases page.'}`);
+  $('update-install').hidden = !release.canInstall;
+  $('update-notes').textContent = release.notes.slice(0, 1500);
+  $('update-notes').hidden = !release.notes;
+}
+
+$('update-check').onclick = checkUpdate;
+$('update-install').onclick = async () => {
+  if (await confirmAction('Update ToolCupboard', 'Download the new version and restart ToolCupboard? Running servers keep going and are picked up again.', false) === null) { return; }
+  $('update-install').disabled = true;
+  setText($('update-status'), 'Downloading the update');
+  const error = await send('app/update', 'POST', {});
+  $('update-install').disabled = false;
+  setText($('update-status'), error || 'Restarting. This page reconnects when ToolCupboard is back.');
+};
+
 async function refreshSystem() {
+  if (!updateChecked) { checkUpdate(); }
   const system = await api('system').catch(() => null);
   if (!system) { return; }
   const body = $('usage').tBodies[0];

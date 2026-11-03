@@ -50,6 +50,8 @@ namespace ToolCupboard
             // The manager runs on this thread, the tray message loop plays the part of the window
             SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
             _servers = new ServerManager(SynchronizationContext.Current);
+            SynchronizationContext context = SynchronizationContext.Current;
+            SelfUpdate.ExitRequested += () => context.Post(_ => Exit(), null);
 
             var menu = new ContextMenuStrip();
             menu.Items.Add("Open dashboard", null, (s, e) => OpenDashboard());
@@ -70,6 +72,7 @@ namespace ToolCupboard
         private async void Start()
         {
             ServerPath.CreateAndFixDirectories();
+            SelfUpdate.RemoveOldVersion();
             _servers.ReloadServers();
             _servers.ReattachServers();
             _servers.AutoStartServer();

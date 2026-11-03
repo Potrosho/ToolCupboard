@@ -178,6 +178,14 @@ namespace ToolCupboard.Web
 
         private static void MapNotes(IEndpointRouteBuilder api)
         {
+            api.MapGet("/api/app/update", async () =>
+            {
+                try { return Results.Json(await SelfUpdate.GetLatest()); }
+                catch (Exception e) when (e is HttpRequestException || e is TaskCanceledException || e is Newtonsoft.Json.JsonException) { return Results.StatusCode(StatusCodes.Status502BadGateway); }
+            });
+
+            api.MapPost("/api/app/update", async () => Refused(await SelfUpdate.Install()));
+
             api.MapGet("/api/notes", () => Results.Json(Notes.List()));
 
             api.MapGet("/api/notes/{name}", (string name) => Notes.Read(name) is string text ? Results.Json(new { text }) : Results.NotFound());

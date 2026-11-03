@@ -226,6 +226,8 @@ namespace ToolCupboard
             g_Servers.AutoStartServer();
             StartConsoleRefresh();
 
+            SelfUpdate.RemoveOldVersion();
+            SelfUpdate.ExitRequested += () => Dispatcher.Invoke(Close);
             StartWebServer();
 
             StartServerTableRefresh();
